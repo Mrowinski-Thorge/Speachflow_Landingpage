@@ -1,0 +1,255 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900;1,14..32,400&display=swap');
+
+/* ── Light Mode Tokens ── */
+:root {
+  --bg-base:        #F5F7FF;
+  --bg-surface:     #FFFFFF;
+  --bg-muted:       #EAEEFC;
+
+  --indigo:         #4F46E5;
+  --indigo-light:   #A5B4FC;
+  --indigo-dark:    #3730A3;
+
+  --blue:           #3B82F6;
+  --blue-light:     #DBEAFE;
+  --blue-dark:      #1E40AF;
+
+  --text-primary:   #0F1235;
+  --text-secondary: #6B7280;
+  --text-heading:   #0F1235;
+  --text-muted:     #9CA3AF;
+
+  --border:         #E5E7EB;
+  --border-indigo:  rgba(79,70,229,0.25);
+
+  /* Legacy compat */
+  --bg-page:        #F5F7FF;
+  --bg-input:       #EAEEFC;
+  --bg-ghost:       #DBEAFE;
+  --bg-elevated:    #EAEEFC;
+  --mint:           #4F46E5;
+  --mint-light:     rgba(79,70,229,0.08);
+  --mint-border:    rgba(79,70,229,0.25);
+  --border-mint:    rgba(79,70,229,0.25);
+  --text-body:      #0F1235;
+}
+
+/* ── Dark Mode Tokens ── */
+.dark {
+  --bg-base:        #161618;
+  --bg-surface:     #1F1F22;
+  --bg-muted:       #28282D;
+
+  --indigo:         #4F46E5;
+  --indigo-light:   #818CF8;
+  --indigo-dark:    #3730A3;
+
+  --blue:           #60A5FA;
+  --blue-light:     #1E2340;
+  --blue-dark:      #BFDBFE;
+
+  --text-primary:   #E8E8F0;
+  --text-secondary: #8A8A9A;
+  --text-heading:   #E8E8F0;
+  --text-muted:     #6B6B7A;
+
+  --border:         rgba(255,255,255,0.08);
+  --border-indigo:  rgba(129,140,248,0.30);
+
+  /* Legacy compat */
+  --bg-page:        #161618;
+  --bg-input:       #28282D;
+  --bg-ghost:       #1E2340;
+  --bg-elevated:    #28282D;
+  --mint:           #818CF8;
+  --mint-light:     rgba(129,140,248,0.10);
+  --mint-border:    rgba(129,140,248,0.30);
+  --border-mint:    rgba(129,140,248,0.30);
+  --text-body:      #E8E8F0;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 250ms ease, color 250ms ease;
+}
+
+/* ── Animations ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-10px); }
+}
+@keyframes float-delayed {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-7px); }
+}
+@keyframes pulse-ring {
+  0%   { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-float         { animation: float 5s ease-in-out infinite; }
+.animate-float-delayed { animation: float-delayed 6.5s ease-in-out infinite 1.5s; }
+.animate-fade-up       { animation: fadeUp 0.65s cubic-bezier(0.22,1,0.36,1) forwards; }
+.animate-fade-in       { animation: fadeIn 0.5s ease forwards; }
+.animate-slide-down    { animation: slideDown 0.25s ease forwards; }
+
+/* ── Scroll reveal ── */
+.section-reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.65s cubic-bezier(0.22,1,0.36,1), transform 0.65s cubic-bezier(0.22,1,0.36,1);
+}
+.section-reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── Indigo gradient text ── */
+.gradient-text {
+  background: linear-gradient(135deg, #4F46E5 0%, #818CF8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Pill badge ── */
+.pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  background: var(--blue-light);
+  color: var(--indigo);
+  border: 1px solid var(--border-indigo);
+}
+.dark .pill-badge {
+  background: var(--blue-light);
+  color: var(--indigo-light);
+  border-color: rgba(129,140,248,0.30);
+}
+
+/* ── Primary button ── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 28px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+  background-color: var(--indigo);
+  border: none;
+  cursor: pointer;
+  transition: background-color 200ms ease, transform 200ms ease;
+  white-space: nowrap;
+}
+.btn-primary:hover {
+  background-color: var(--indigo-dark);
+  transform: translateY(-1px);
+}
+.btn-primary:active {
+  background-color: var(--indigo-dark);
+  transform: translateY(0);
+}
+
+/* ── Secondary button ── */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 28px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--blue);
+  background-color: var(--blue-light);
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  transition: background-color 200ms ease, border-color 200ms ease, transform 200ms ease;
+  white-space: nowrap;
+}
+.btn-secondary:hover {
+  background-color: var(--blue-light);
+  border-color: var(--blue);
+  color: var(--blue-dark);
+  transform: translateY(-1px);
+}
+
+/* ── Ghost button ── */
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 28px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background-color: transparent;
+  border: 1.5px solid var(--border);
+  cursor: pointer;
+  transition: border-color 200ms ease, color 200ms ease, transform 200ms ease;
+  white-space: nowrap;
+}
+.btn-ghost:hover {
+  border-color: var(--indigo-light);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+/* ── Card ── */
+.card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  transition: border-color 200ms ease, transform 200ms ease;
+}
+.card:hover {
+  border-color: var(--border-indigo);
+}
+
+/* ── Transition for dark mode ── */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color;
+  transition-duration: 250ms;
+  transition-timing-function: ease;
+}
+.section-reveal, .animate-float, .animate-float-delayed {
+  transition-property: opacity, transform, background-color, border-color, color;
+}

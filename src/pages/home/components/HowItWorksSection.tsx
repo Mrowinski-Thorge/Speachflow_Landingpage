@@ -47,10 +47,6 @@ export default function HowItWorksSection() {
 
           {/* Left */}
           <div ref={ref} className="section-reveal lg:w-80 flex-shrink-0">
-            <div className="pill-badge mb-5">
-              <i className="ri-question-line" />
-              FAQ
-            </div>
             <h2
               className="text-3xl md:text-4xl font-bold tracking-tight mb-4"
               style={{ color: 'var(--text-heading)', fontFamily: 'Inter, sans-serif' }}

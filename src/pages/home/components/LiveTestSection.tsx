@@ -13,6 +13,7 @@ interface AnalysisResult {
   used: number;
   limit: number;
   remaining: number;
+  cooldown_until?: string;
 }
 
 function getOrCreateSessionId(): string {
@@ -33,7 +34,7 @@ function getScoreLabel(score: number): string {
   return 'Weiter üben';
 }
 
-type Stage = 'idle' | 'recording' | 'analyzing' | 'result' | 'limit';
+type Stage = 'idle' | 'recording' | 'analyzing' | 'result' | 'limit' | 'cooldown' | 'too_short';
 
 export default function LiveTestSection() {
   const ref = useScrollReveal();
@@ -54,6 +55,7 @@ export default function LiveTestSection() {
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   const sessionId = getOrCreateSessionId();
+  const MIN_RECORDING_SECONDS = 3;
 
   const analyzeSteps = [
     'Audio wird verarbeitet...',
@@ -122,6 +124,12 @@ export default function LiveTestSection() {
 
   const handleRecord = async () => {
     if (stage === 'recording') {
+      // Check minimum recording duration
+      if (recordingTime < MIN_RECORDING_SECONDS) {
+        setStage('too_short');
+        stopAll();
+        return;
+      }
       setStage('analyzing');
       stopAll();
       return;
@@ -186,7 +194,16 @@ export default function LiveTestSection() {
 
       if (response.status === 429) {
         setUsedToday(DAILY_LIMIT);
-        setStage('limit');
+        if (data.error === 'cooldown_active') {
+          setStage('cooldown');
+        } else {
+          setStage('limit');
+        }
+        return;
+      }
+
+      if (response.status === 422 && data.error === 'audio_too_short') {
+        setStage('too_short');
         return;
       }
 
@@ -196,7 +213,11 @@ export default function LiveTestSection() {
 
       setResult(data);
       setUsedToday(data.used);
-      setStage(data.remaining <= 0 ? 'limit' : 'result');
+      if (data.remaining <= 0) {
+        setStage('limit');
+      } else {
+        setStage('result');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten.');
       setStage('idle');
@@ -211,6 +232,9 @@ export default function LiveTestSection() {
     setAudioLevel(Array(20).fill(0));
     setStage('idle');
   };
+
+  const isTooShort = stage === 'too_short';
+  const isCooldown = stage === 'cooldown';
 
   const formatTime = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
@@ -227,10 +251,6 @@ export default function LiveTestSection() {
 
         {/* Header */}
         <div ref={ref} className="section-reveal text-center mb-12">
-          <div className="pill-badge mb-5 mx-auto w-fit">
-            <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-            Live Demo
-          </div>
           <h2
             className="text-4xl md:text-5xl font-bold mb-4 tracking-tight"
             style={{ color: 'var(--text-heading)', fontFamily: 'Inter, sans-serif' }}
@@ -250,6 +270,53 @@ export default function LiveTestSection() {
             border: '1px solid var(--border)',
           }}
         >
+
+          {/* ── TOO SHORT ── */}
+          {isTooShort && (
+            <div className="flex flex-col items-center justify-center py-20 px-8 gap-6 text-center">
+              <div
+                className="w-16 h-16 flex items-center justify-center rounded-2xl"
+                style={{ backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}
+              >
+                <i className="ri-time-line text-3xl" style={{ color: '#f59e0b' }} />
+              </div>
+              <div>
+                <p className="text-base font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Aufnahme zu kurz</p>
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  Bitte sprich mindestens <strong>3 Sekunden</strong> – die KI braucht genug Inhalt zum Analysieren.
+                </p>
+              </div>
+              <button onClick={handleReset} className="btn-ghost text-sm px-5 py-2.5">
+                <i className="ri-refresh-line" /> Nochmal versuchen
+              </button>
+            </div>
+          )}
+
+          {/* ── COOLDOWN ── */}
+          {isCooldown && (
+            <div className="flex flex-col items-center justify-center py-20 px-8 gap-6 text-center">
+              <div
+                className="w-16 h-16 flex items-center justify-center rounded-2xl"
+                style={{ backgroundColor: 'var(--blue-light)', border: '1px solid var(--border-indigo)' }}
+              >
+                <i className="ri-calendar-schedule-line text-3xl" style={{ color: 'var(--indigo)' }} />
+              </div>
+              <div>
+                <p className="text-base font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Cooldown aktiv</p>
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  Du hast deine 2 kostenlosen Analysen genutzt. Lade die App herunter für unbegrenzte Analysen!
+                </p>
+              </div>
+              <div className="flex gap-3 flex-wrap justify-center">
+                <a href="#download" className="btn-primary text-sm px-5 py-2.5">
+                  <i className="ri-apple-line" /> App Store
+                </a>
+                <a href="#download" className="btn-secondary text-sm px-5 py-2.5">
+                  <i className="ri-google-play-line" /> Google Play
+                </a>
+              </div>
+            </div>
+          )}
 
           {/* ── IDLE ── */}
           {stage === 'idle' && (
@@ -413,105 +480,108 @@ export default function LiveTestSection() {
                 </div>
               </div>
 
-              {/* Strengths + Improvements */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <i className="ri-checkbox-circle-line" style={{ color: 'var(--indigo)' }} />
-                    <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Das lief gut</span>
+              {/* Strengths + Improvements — only shown when not at limit */}
+              {stage !== 'limit' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <i className="ri-checkbox-circle-line" style={{ color: 'var(--indigo)' }} />
+                      <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Das lief gut</span>
+                    </div>
+                    <div className="space-y-2">
+                      {result.strengths.map((s, i) => (
+                        <div
+                          key={i}
+                          className="flex items-start gap-2 p-3 rounded-xl text-sm"
+                          style={{ backgroundColor: 'rgba(79,70,229,0.06)', border: '1px solid rgba(79,70,229,0.12)' }}
+                        >
+                          <i className="ri-check-line mt-0.5 flex-shrink-0 text-xs" style={{ color: 'var(--indigo)' }} />
+                          <span style={{ color: 'var(--text-primary)' }}>{s}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    {result.strengths.map((s, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-2 p-3 rounded-xl text-sm"
-                        style={{ backgroundColor: 'rgba(79,70,229,0.06)', border: '1px solid rgba(79,70,229,0.12)' }}
-                      >
-                        <i className="ri-check-line mt-0.5 flex-shrink-0 text-xs" style={{ color: 'var(--indigo)' }} />
-                        <span style={{ color: 'var(--text-primary)' }}>{s}</span>
-                      </div>
-                    ))}
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <i className="ri-arrow-up-circle-line" style={{ color: '#f59e0b' }} />
+                      <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Verbesserungspotenzial</span>
+                    </div>
+                    <div className="space-y-2">
+                      {result.improvements.map((imp, i) => (
+                        <div
+                          key={i}
+                          className="flex items-start gap-2 p-3 rounded-xl text-sm"
+                          style={{ backgroundColor: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.12)' }}
+                        >
+                          <i className="ri-arrow-right-up-line mt-0.5 flex-shrink-0 text-xs" style={{ color: '#f59e0b' }} />
+                          <span style={{ color: 'var(--text-primary)' }}>{imp}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <i className="ri-arrow-up-circle-line" style={{ color: '#f59e0b' }} />
-                    <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Verbesserungspotenzial</span>
-                  </div>
-                  <div className="space-y-2">
-                    {result.improvements.map((imp, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-2 p-3 rounded-xl text-sm"
-                        style={{ backgroundColor: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.12)' }}
-                      >
-                        <i className="ri-arrow-right-up-line mt-0.5 flex-shrink-0 text-xs" style={{ color: '#f59e0b' }} />
-                        <span style={{ color: 'var(--text-primary)' }}>{imp}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Summary */}
-              <div
-                className="p-4 rounded-2xl text-sm leading-relaxed"
-                style={{ backgroundColor: 'var(--bg-muted)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <i className="ri-sparkling-line text-xs" style={{ color: 'var(--indigo)' }} />
-                  <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>KI-Fazit</span>
-                </div>
-                {result.summary}
-              </div>
-
-              {/* Transcript toggle */}
-              <button
-                onClick={() => setShowTranscript((v) => !v)}
-                className="flex items-center gap-1.5 text-xs cursor-pointer transition-colors duration-150"
-                style={{ color: 'var(--indigo)' }}
-              >
-                <i className={showTranscript ? 'ri-eye-off-line' : 'ri-file-text-line'} />
-                {showTranscript ? 'Transkript ausblenden' : 'Transkript anzeigen'}
-              </button>
-              {showTranscript && (
-                <div
-                  className="p-4 rounded-2xl text-xs leading-relaxed font-mono"
-                  style={{ backgroundColor: 'var(--bg-muted)', color: 'var(--text-secondary)', maxHeight: '140px', overflowY: 'auto', border: '1px solid var(--border)' }}
-                >
-                  {result.transcript || 'Kein Transkript verfügbar.'}
                 </div>
               )}
 
-              {/* Actions */}
-              <div className="flex items-center justify-between flex-wrap gap-3">
-                {stage === 'result' && (
+              {/* Summary — only when not at limit */}
+              {stage !== 'limit' && (
+                <div
+                  className="p-4 rounded-2xl text-sm leading-relaxed"
+                  style={{ backgroundColor: 'var(--bg-muted)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <i className="ri-sparkling-line text-xs" style={{ color: 'var(--indigo)' }} />
+                    <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>KI-Fazit</span>
+                  </div>
+                  {result.summary}
+                </div>
+              )}
+
+              {/* Transcript toggle — only when not at limit */}
+              {stage !== 'limit' && (
+                <>
                   <button
-                    onClick={handleReset}
-                    className="btn-ghost text-sm px-5 py-2.5"
+                    onClick={() => setShowTranscript((v) => !v)}
+                    className="flex items-center gap-1.5 text-xs cursor-pointer transition-colors duration-150"
+                    style={{ color: 'var(--indigo)' }}
                   >
+                    <i className={showTranscript ? 'ri-eye-off-line' : 'ri-file-text-line'} />
+                    {showTranscript ? 'Transkript ausblenden' : 'Transkript anzeigen'}
+                  </button>
+                  {showTranscript && (
+                    <div
+                      className="p-4 rounded-2xl text-xs leading-relaxed font-mono"
+                      style={{ backgroundColor: 'var(--bg-muted)', color: 'var(--text-secondary)', maxHeight: '140px', overflowY: 'auto', border: '1px solid var(--border)' }}
+                    >
+                      {result.transcript || 'Kein Transkript verfügbar.'}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Actions */}
+              {stage === 'result' && (
+                <div className="flex items-center gap-3">
+                  <button onClick={handleReset} className="btn-ghost text-sm px-5 py-2.5">
                     <i className="ri-refresh-line" />
                     Nochmal aufnehmen
                   </button>
-                )}
-                {stage === 'limit' && (
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    Tageslimit erreicht – morgen wieder 2 kostenlose Analysen
-                  </p>
-                )}
-              </div>
+                </div>
+              )}
 
-              {/* Download CTA after last attempt */}
+              {/* Download CTA — shown after last attempt, replaces everything */}
               {stage === 'limit' && (
                 <div
-                  className="rounded-2xl p-5 text-center"
+                  className="rounded-2xl p-6 text-center"
                   style={{ backgroundColor: 'var(--blue-light)', border: '1px solid var(--border-indigo)' }}
                 >
-                  <p className="text-sm font-bold mb-1" style={{ color: 'var(--indigo)' }}>
-                    Unbegrenzte Analysen in der App
+                  <div className="w-12 h-12 flex items-center justify-center rounded-2xl mx-auto mb-4" style={{ backgroundColor: 'rgba(79,70,229,0.12)' }}>
+                    <i className="ri-smartphone-line text-2xl" style={{ color: 'var(--indigo)' }} />
+                  </div>
+                  <p className="text-base font-bold mb-1" style={{ color: 'var(--indigo)' }}>
+                    Lade SpeachFlow herunter, um weiter zu üben
                   </p>
-                  <p className="text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
-                    Detaillierteres Feedback, Verlauf und mehr – kostenlos herunterladen.
+                  <p className="text-xs mb-5" style={{ color: 'var(--text-secondary)' }}>
+                    Unbegrenzte Analysen, detailliertes Feedback &amp; Verlauf – kostenlos.
                   </p>
                   <div className="flex gap-3 justify-center flex-wrap">
                     <a href="#download" className="btn-primary text-sm px-5 py-2.5">
@@ -562,21 +632,7 @@ export default function LiveTestSection() {
           </div>
         )}
 
-        {/* Bottom info row */}
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-xs" style={{ color: 'var(--text-muted)' }}>
-          <span className="flex items-center gap-1.5">
-            <i className="ri-shield-check-line" style={{ color: 'var(--indigo)' }} />
-            Aufnahmen nicht gespeichert
-          </span>
-          <span className="flex items-center gap-1.5">
-            <i className="ri-time-line" style={{ color: 'var(--indigo)' }} />
-            2× täglich kostenlos
-          </span>
-          <span className="flex items-center gap-1.5">
-            <i className="ri-sparkling-line" style={{ color: 'var(--indigo)' }} />
-            Powered by Google Gemini 2.5 Flash
-          </span>
-        </div>
+
       </div>
     </section>
   );

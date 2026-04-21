@@ -73,10 +73,6 @@ export default function TestimonialsSection() {
 
         {/* Header */}
         <div ref={ref} className="section-reveal text-center mb-16">
-          <div className="pill-badge mb-5 mx-auto w-fit">
-            <i className="ri-chat-quote-line" />
-            Nutzer
-          </div>
           <h2
             className="text-4xl md:text-5xl font-bold tracking-tight mb-4"
             style={{ color: 'var(--text-heading)', fontFamily: 'Inter, sans-serif' }}

@@ -1,7 +1,4 @@
 import { useScrollReveal } from '@/hooks/useScrollReveal';
-import { assetPath } from '@/utils/assetPath';
-
-const LOGO_SRC = assetPath('logo.svg');
 
 export default function Footer() {
   const ref = useScrollReveal();
@@ -29,14 +26,6 @@ export default function Footer() {
             />
 
             <div className="relative">
-              <div
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest mb-8"
-                style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.9)' }}
-              >
-                <i className="ri-rocket-line" />
-                Jetzt starten
-              </div>
-
               <h2
                 className="text-4xl md:text-5xl font-black mb-5 tracking-tight text-white"
                 style={{ fontFamily: 'Inter, sans-serif' }}
@@ -115,7 +104,7 @@ export default function Footer() {
           {/* Logo + tagline */}
           <div className="flex items-center gap-3">
             <img
-              src={LOGO_SRC}
+              src="https://static.readdy.ai/image/c22c690b3fad44e0f4e8b70799dbf390/8efff0df91d4bff17be966e52d6bcb60.png"
               alt="SpeachFlow"
               className="h-7 w-auto"
             />

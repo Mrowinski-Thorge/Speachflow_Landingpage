@@ -57,20 +57,25 @@ const METRICS = [
   { target: 4.8, suffix: '★', label: 'App-Bewertung', display: (v: number) => `${v.toFixed(1)} ★` },
 ];
 
-function useCountUp(target: number, duration = 1800, started: boolean) {
+function useCountUp(target: number, duration = 1400, started: boolean) {
   const [value, setValue] = useState(0);
+  const rafRef = useRef<number | null>(null);
   useEffect(() => {
     if (!started) return;
+    // cancel any previous animation
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     let startTime: number | null = null;
     const step = (timestamp: number) => {
       if (!startTime) startTime = timestamp;
       const elapsed = timestamp - startTime;
       const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
+      // fast easeOutExpo — rockets to target quickly
+      const eased = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
       setValue(eased * target);
-      if (progress < 1) requestAnimationFrame(step);
+      if (progress < 1) rafRef.current = requestAnimationFrame(step);
     };
-    requestAnimationFrame(step);
+    rafRef.current = requestAnimationFrame(step);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [started, target, duration]);
   return value;
 }
@@ -95,6 +100,7 @@ export default function HeroSection() {
   const [imgOrder, setImgOrder] = useState([0, 1, 2]);
   const [shuffling, setShuffling] = useState(false);
   const [metricsStarted, setMetricsStarted] = useState(false);
+  const [metricsVisible, setMetricsVisible] = useState(false);
   const metricsRef = useRef<HTMLDivElement>(null);
   const typewriterText = useTypewriter(PHRASES);
 
@@ -107,8 +113,14 @@ export default function HeroSection() {
     const el = metricsRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) { setMetricsStarted(true); observer.disconnect(); } },
-      { threshold: 0.4 }
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setMetricsVisible(true);
+          setTimeout(() => setMetricsStarted(true), 200);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.3 }
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -391,7 +403,12 @@ export default function HeroSection() {
         <div
           ref={metricsRef}
           className="flex flex-wrap items-center justify-center gap-6 md:gap-10 mt-16 md:mt-20 pt-8 md:pt-10 w-full"
-          style={{ ...fade(500), borderTop: '1px solid var(--border)' }}
+          style={{
+            borderTop: '1px solid var(--border)',
+            opacity: metricsVisible ? 1 : 0,
+            transform: metricsVisible ? 'translateY(0)' : 'translateY(20px)',
+            transition: 'opacity 0.6s cubic-bezier(0.22,1,0.36,1), transform 0.6s cubic-bezier(0.22,1,0.36,1)',
+          }}
         >
           {METRICS.map((m) => (
             <MetricItem key={m.label} metric={m} started={metricsStarted} />

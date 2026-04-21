@@ -1,0 +1,6 @@
+User-agent: *
+Disallow: /datenschutz
+Disallow: /impressum
+Disallow: /nutzungsbedingungen
+Allow: /
+Sitemap: https://speachflow.app/sitemap.xml

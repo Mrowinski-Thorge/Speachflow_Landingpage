@@ -1,39 +1,17 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const DAILY_LIMIT = 2;
-const MAX_AUDIO_BYTES = 8 * 1024 * 1024; // 8 MB
-const ALLOWED_AUDIO_TYPES = new Set([
-  'audio/webm',
-  'audio/webm;codecs=opus',
-  'audio/ogg',
-  'audio/ogg;codecs=opus',
-  'audio/mp4',
-  'audio/mpeg',
-  'audio/wav',
-]);
-const SESSION_ID_REGEX = /^sess_[a-zA-Z0-9_-]{16,80}$/;
-const FALLBACK_ALLOWED_ORIGINS = [
-  'http://localhost:3000',
-  'http://localhost:5173',
+// Allow both www and non-www
+const ALLOWED_ORIGINS = [
+  'https://speachflow.app',
+  'https://www.speachflow.app',
 ];
 
-function getAllowedOrigins(): string[] {
-  const configured = Deno.env.get('ALLOWED_ORIGINS') ?? '';
-  const configuredOrigins = configured
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-  return configuredOrigins.length > 0 ? configuredOrigins : FALLBACK_ALLOWED_ORIGINS;
-}
+const DAILY_LIMIT = 2;
+const COOLDOWN_DAYS = 2;
 
-function getCorsHeaders(origin: string) {
-  return {
-    'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    Vary: 'Origin',
-  };
-}
+// Minimum audio file size to consider >= 3 seconds (very rough estimate)
+// 3s of webm/opus at ~32kbps = ~12000 bytes — use 8000 as conservative threshold
+const MIN_AUDIO_BYTES = 8000;
 
 async function getGoogleAccessToken(clientEmail: string, privateKey: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
@@ -141,47 +119,36 @@ async function collectStreamedText(response: Response): Promise<string> {
 }
 
 Deno.serve(async (req) => {
-  const allowedOrigins = getAllowedOrigins();
-  const requestOrigin = req.headers.get('origin');
+  const origin = req.headers.get('origin') ?? '';
+
+  // Build CORS headers — reflect allowed origin or block
+  const corsHeaders: Record<string, string> = {
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  };
+
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    corsHeaders['Access-Control-Allow-Origin'] = origin;
+  } else {
+    corsHeaders['Access-Control-Allow-Origin'] = ALLOWED_ORIGINS[0];
+  }
 
   if (req.method === 'OPTIONS') {
-    if (!requestOrigin || !allowedOrigins.includes(requestOrigin)) {
-      return new Response(
-        JSON.stringify({ error: 'forbidden_origin' }),
-        { status: 403, headers: { 'Content-Type': 'application/json', Vary: 'Origin' } }
-      );
-    }
-
-    const corsHeaders = getCorsHeaders(requestOrigin);
     return new Response('ok', { headers: corsHeaders });
   }
 
-  if (req.method !== 'POST') {
-    const methodHeaders =
-      requestOrigin && allowedOrigins.includes(requestOrigin)
-        ? { ...getCorsHeaders(requestOrigin), 'Content-Type': 'application/json' }
-        : { 'Content-Type': 'application/json', Vary: 'Origin' };
-
+  // Origin guard
+  if (!ALLOWED_ORIGINS.includes(origin)) {
     return new Response(
-      JSON.stringify({ error: 'method_not_allowed' }),
-      { status: 405, headers: methodHeaders }
+      JSON.stringify({ error: 'forbidden', message: 'Only requests from speachflow.app are allowed.' }),
+      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
-
-  if (!requestOrigin || !allowedOrigins.includes(requestOrigin)) {
-    return new Response(
-      JSON.stringify({ error: 'forbidden_origin' }),
-      { status: 403, headers: { 'Content-Type': 'application/json', Vary: 'Origin' } }
-    );
-  }
-
-  const corsHeaders = getCorsHeaders(requestOrigin);
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    // Try all possible secret name variants
     const clientEmail =
       Deno.env.get('GCP_CLIENT_EMAIL') ??
       Deno.env.get('GOOGLE_CLIENT_EMAIL') ??
@@ -199,20 +166,15 @@ Deno.serve(async (req) => {
 
     const privateKey = rawPrivateKey?.replace(/\\n/g, '\n');
 
-    // Detailed credential diagnostics
     const missing: string[] = [];
-    if (!clientEmail) missing.push('GCP_CLIENT_EMAIL (or GOOGLE_CLIENT_EMAIL)');
-    if (!privateKey) missing.push('GCP_PRIVATE_KEY (or GOOGLE_PRIVATE_KEY)');
-    if (!projectId) missing.push('GCP_PROJECT_ID (or GOOGLE_PROJECT_ID)');
+    if (!clientEmail) missing.push('GCP_CLIENT_EMAIL');
+    if (!privateKey) missing.push('GCP_PRIVATE_KEY');
+    if (!projectId) missing.push('GCP_PROJECT_ID');
 
     if (missing.length > 0) {
       console.error('Missing secrets:', missing.join(', '));
       return new Response(
-        JSON.stringify({
-          error: 'missing_credentials',
-          missing,
-          message: `Missing Supabase Edge Function secrets: ${missing.join(', ')}. Go to Supabase Dashboard → Edge Functions → Secrets and add them.`,
-        }),
+        JSON.stringify({ error: 'missing_credentials', missing }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -220,62 +182,71 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const formData = await req.formData();
-    const audioFile = formData.get('audio');
-    const sessionId = formData.get('session_id');
+    const audioFile = formData.get('audio') as File;
+    const sessionId = formData.get('session_id') as string;
     const scenario = (formData.get('scenario') as string) || 'speech';
 
-    if (!(audioFile instanceof File) || typeof sessionId !== 'string') {
+    if (!audioFile || !sessionId) {
       return new Response(
         JSON.stringify({ error: 'Missing audio or session_id' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    if (!SESSION_ID_REGEX.test(sessionId)) {
+    // ── Audio length guard (backend) ──
+    // Check file size as proxy for duration. < 8KB very likely < 3s
+    if (audioFile.size < MIN_AUDIO_BYTES) {
       return new Response(
-        JSON.stringify({ error: 'Invalid session_id' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          error: 'audio_too_short',
+          message: 'Aufnahme nicht lang genug – bitte mindestens 3 Sekunden sprechen.',
+        }),
+        { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    if (audioFile.size > MAX_AUDIO_BYTES) {
-      return new Response(
-        JSON.stringify({ error: 'Audio file too large' }),
-        { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!ALLOWED_AUDIO_TYPES.has(audioFile.type)) {
-      return new Response(
-        JSON.stringify({ error: 'Unsupported audio type' }),
-        { status: 415, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Rate limit check
+    // ── Rate limit check ──
     const today = new Date().toISOString().split('T')[0];
+
     const { data: rateData } = await supabase
       .from('live_test_rate_limit')
       .select('*')
       .eq('session_id', sessionId)
-      .eq('last_used_date', today)
       .maybeSingle();
 
     const currentCount = rateData?.used_count ?? 0;
+    const cooldownUntil: string | null = rateData?.cooldown_until ?? null;
 
-    if (currentCount >= DAILY_LIMIT) {
+    // Blocked by cooldown
+    if (cooldownUntil && today < cooldownUntil) {
       return new Response(
         JSON.stringify({
-          error: 'rate_limit_exceeded',
+          error: 'cooldown_active',
           used: currentCount,
           limit: DAILY_LIMIT,
-          message: 'Du hast dein tägliches Limit von 2 Analysen erreicht.',
+          cooldown_until: cooldownUntil,
+          message: `Du bist im Cooldown. Nächste Analyse möglich ab: ${cooldownUntil}`,
         }),
         { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Audio → base64
+    // Reset count after cooldown expired
+    const effectiveCount = (cooldownUntil && today >= cooldownUntil) ? 0 : currentCount;
+
+    if (effectiveCount >= DAILY_LIMIT) {
+      return new Response(
+        JSON.stringify({
+          error: 'rate_limit_exceeded',
+          used: effectiveCount,
+          limit: DAILY_LIMIT,
+          message: 'Du hast dein Limit von 2 Analysen erreicht.',
+        }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ── Audio → base64 ──
     const audioBuffer = await audioFile.arrayBuffer();
     const audioBytes = new Uint8Array(audioBuffer);
     let binary = '';
@@ -293,18 +264,15 @@ Deno.serve(async (req) => {
     };
     const scenarioLabel = scenarioLabels[scenario] || 'Vortrag';
 
-    // Step 1: Get OAuth2 token
-    console.log('Requesting Google access token for:', clientEmail?.substring(0, 20) + '...');
+    console.log('Requesting Google access token...');
     const accessToken = await getGoogleAccessToken(clientEmail!, privateKey!);
     console.log('Access token obtained');
 
-    // Step 2: Build URL
     const region = 'us-central1';
-    const model = 'gemini-2.5-flash-lite';
+    const model = 'gemini-3.1-flash-lite-preview';
     const vertexUrl = `https://${region}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:streamGenerateContent`;
-    console.log('Calling:', vertexUrl);
+    console.log('Calling model:', model);
 
-    // Step 3: POST to Vertex AI
     const geminiResponse = await fetch(vertexUrl, {
       method: 'POST',
       headers: {
@@ -320,27 +288,34 @@ Deno.serve(async (req) => {
                 inline_data: { mime_type: mimeType, data: base64Audio },
               },
               {
-                text: `Du bist ein professioneller Präsentationscoach. Analysiere diese Audioaufnahme einer ${scenarioLabel}.
+                text: `Du bist ein erfahrener Präsentationscoach. Analysiere diese Audioaufnahme einer ${scenarioLabel} sehr sorgfältig.
 
-Antworte NUR mit einem validen JSON-Objekt (keine Markdown-Blöcke, kein Text davor oder danach):
+SCHRITT 1 – TRANSKRIPTION:
+Transkribiere exakt und vollständig, was gesprochen wurde. Jedes Wort, jede Pause, jeder Satz. Keine Zusammenfassung – wörtlich.
 
+SCHRITT 2 – BEWERTUNG:
+Nur wenn die Aufnahme mindestens 3 vollständige gesprochene Sätze enthält UND die Sprache klar erkennbar ist:
+- Identifiziere genau 3 konkrete Stärken der Sprechweise (z.B. Tempo, Betonung, Klarheit, Struktur, Überzeugungskraft)
+- Identifiziere genau 3 konkrete Schwächen / Verbesserungsbereiche mit praktischem Tipp
+- Schreibe GENAU EINEN abschließenden Satz als Gesamtfazit
+
+Falls die Sprache nicht erkennbar ist, zu kurz, zu leise oder weniger als 3 vollständige Sätze:
+Antworte NUR mit:
+{"transcript":"","overall_score":0,"strengths":[],"improvements":[],"summary":"Zu wenig zum Auswerten – bitte sprich mindestens 3 vollständige Sätze."}
+
+AUSGABE – NUR dieses JSON, kein Markdown, kein erklärender Text davor oder danach:
 {
-  "transcript": "Vollständige Transkription",
-  "overall_score": 75,
-  "strengths": ["Stärke 1", "Stärke 2", "Stärke 3"],
-  "improvements": ["Verbesserung 1", "Verbesserung 2", "Verbesserung 3"],
-  "summary": "2-3 Sätze Zusammenfassung mit konkreten Tipps"
-}
-
-Regeln:
-- overall_score: 0-100, realistisch bewerten
-- Immer genau 3 Stärken und 3 Verbesserungen
-- Auf Deutsch antworten`,
+  "transcript": "<vollständige wörtliche Transkription>",
+  "overall_score": <0-100 realistisch>,
+  "strengths": ["<Stärke 1>", "<Stärke 2>", "<Stärke 3>"],
+  "improvements": ["<Verbesserung 1 mit konkretem Tipp>", "<Verbesserung 2 mit konkretem Tipp>", "<Verbesserung 3 mit konkretem Tipp>"],
+  "summary": "<Genau ein Satz Gesamtfazit>"
+}`,
               },
             ],
           },
         ],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
+        generationConfig: { temperature: 0.2, maxOutputTokens: 1200 },
       }),
     });
 
@@ -353,7 +328,6 @@ Regeln:
       );
     }
 
-    // Step 4: Parse stream
     const rawText = await collectStreamedText(geminiResponse);
     console.log('Raw response length:', rawText.length);
 
@@ -364,28 +338,46 @@ Regeln:
     } catch {
       console.error('JSON parse failed:', rawText.substring(0, 300));
       analysis = {
-        transcript: rawText || 'Transkription nicht verfügbar',
-        overall_score: 70,
-        strengths: ['Guter Versuch', 'Klare Aussprache', 'Engagement spürbar'],
-        improvements: ['Struktur verbessern', 'Pausen bewusster setzen', 'Tempo variieren'],
-        summary: 'Eine solide Präsentation mit Entwicklungspotenzial. Weiter üben!',
+        transcript: '',
+        overall_score: 0,
+        strengths: [],
+        improvements: [],
+        summary: 'Zu wenig zum Auswerten – bitte sprich mindestens 3 vollständige Sätze.',
       };
     }
 
-    // Update rate limit
-    if (rateData) {
-      await supabase
-        .from('live_test_rate_limit')
-        .update({ used_count: currentCount + 1, updated_at: new Date().toISOString() })
-        .eq('session_id', sessionId)
-        .eq('last_used_date', today);
-    } else {
-      await supabase
-        .from('live_test_rate_limit')
-        .insert({ session_id: sessionId, used_count: 1, last_used_date: today });
-    }
+    // ── Update rate limit ──
+    const newCount = effectiveCount + 1;
+    const isLastAttempt = newCount >= DAILY_LIMIT;
 
-    const newCount = currentCount + 1;
+    const cooldownDate = isLastAttempt
+      ? (() => {
+          const d = new Date();
+          d.setDate(d.getDate() + COOLDOWN_DAYS);
+          return d.toISOString().split('T')[0];
+        })()
+      : null;
+
+    if (rateData && (cooldownUntil === null || today >= cooldownUntil)) {
+      await supabase
+        .from('live_test_rate_limit')
+        .update({
+          used_count: newCount,
+          last_used_date: today,
+          updated_at: new Date().toISOString(),
+          ...(cooldownDate ? { cooldown_until: cooldownDate } : {}),
+        })
+        .eq('session_id', sessionId);
+    } else if (!rateData) {
+      await supabase
+        .from('live_test_rate_limit')
+        .insert({
+          session_id: sessionId,
+          used_count: newCount,
+          last_used_date: today,
+          ...(cooldownDate ? { cooldown_until: cooldownDate } : {}),
+        });
+    }
 
     return new Response(
       JSON.stringify({
@@ -393,6 +385,7 @@ Regeln:
         used: newCount,
         limit: DAILY_LIMIT,
         remaining: DAILY_LIMIT - newCount,
+        ...(cooldownDate ? { cooldown_until: cooldownDate } : {}),
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

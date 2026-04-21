@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react';
-import { assetPath } from '@/utils/assetPath';
-
-const LOGO_SRC = assetPath('logo.svg');
 
 export default function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dark, setDark] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 768);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
+    const onResize = () => setIsDesktop(window.innerWidth >= 768);
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    window.addEventListener('resize', onResize, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onResize);
+    };
   }, []);
 
   useEffect(() => {
@@ -68,19 +71,28 @@ export default function Header() {
             transform: 'translateZ(0)',
           }}
         >
-          <div className="px-5 md:px-7" style={{ maxWidth: '1100px', margin: '0 auto' }}>
+          <div
+            className="px-5 md:px-7"
+            style={{
+              maxWidth: '1100px',
+              margin: '0 auto',
+              paddingRight: scrolled ? '6px' : undefined,
+              paddingLeft: scrolled ? '28px' : undefined,
+              transition: 'padding 0.4s cubic-bezier(0.22,1,0.36,1)',
+            }}
+          >
             <div className="flex items-center justify-between h-14">
 
               {/* Logo + Brand name */}
               <a href="#" className="flex items-center gap-2.5 cursor-pointer">
                 <img
-                  src={LOGO_SRC}
+                  src="https://static.readdy.ai/image/c22c690b3fad44e0f4e8b70799dbf390/8efff0df91d4bff17be966e52d6bcb60.png"
                   alt="SpeachFlow Logo"
                   className="h-11 w-auto"
                 />
                 {/* SpeachFlow text — hidden on mobile */}
                 <span
-                  className="hidden md:block text-lg font-bold tracking-tight whitespace-nowrap"
+                  className="block text-lg font-bold tracking-tight whitespace-nowrap"
                   style={{
                     fontFamily: 'Inter, sans-serif',
                     color: 'var(--text-heading)',
@@ -114,7 +126,7 @@ export default function Header() {
               </nav>
 
               {/* Right: toggle + CTA */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2" style={{ transition: 'margin 0.4s cubic-bezier(0.22,1,0.36,1)' }}>
                 <button
                   onClick={() => setDark(!dark)}
                   className="w-9 h-9 flex items-center justify-center rounded-full cursor-pointer transition-all duration-200"
@@ -136,19 +148,21 @@ export default function Header() {
                   <i className={`text-sm ${dark ? 'ri-sun-line' : 'ri-moon-line'}`} />
                 </button>
 
-                <a
-                  href="#download"
-                  className="hidden md:flex btn-primary text-sm px-5 py-2 whitespace-nowrap"
-                >
-                  App laden
-                </a>
+                {isDesktop && (
+                  <a
+                    href="#download"
+                    className="btn-primary text-sm px-5 py-2 whitespace-nowrap"
+                  >
+                    App laden
+                  </a>
+                )}
 
                 <button
-                  className="md:hidden w-9 h-9 flex items-center justify-center rounded-full cursor-pointer transition-all duration-200"
-                  style={{ color: 'var(--text-secondary)', backgroundColor: 'var(--bg-muted)', border: '1px solid var(--border)' }}
+                  className="md:hidden w-9 h-9 flex items-center justify-center cursor-pointer transition-all duration-200"
+                  style={{ color: 'var(--text-secondary)' }}
                   onClick={() => setMenuOpen(!menuOpen)}
                 >
-                  <i className={`text-sm ${menuOpen ? 'ri-close-line' : 'ri-menu-line'}`} />
+                  <i className={`text-xl ${menuOpen ? 'ri-close-line' : 'ri-menu-line'}`} />
                 </button>
               </div>
             </div>

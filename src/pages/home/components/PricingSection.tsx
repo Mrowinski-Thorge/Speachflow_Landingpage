@@ -90,10 +90,6 @@ export default function PricingSection() {
 
         {/* Header */}
         <div ref={ref} className="section-reveal text-center mb-14">
-          <div className="pill-badge mb-5 mx-auto w-fit">
-            <i className="ri-price-tag-3-line" />
-            Preise
-          </div>
           <h2
             className="text-4xl md:text-5xl font-bold tracking-tight mb-4"
             style={{ color: 'var(--text-heading)', fontFamily: 'Inter, sans-serif' }}

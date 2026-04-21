@@ -1,8 +1,4 @@
 import { useScrollReveal } from '@/hooks/useScrollReveal';
-import { assetPath } from '@/utils/assetPath';
-
-const PHONE_DASHBOARD = assetPath('phone-dashboard.svg');
-const PHONE_RECORDING = assetPath('phone-recording.svg');
 
 const STATS = [
   { value: '10K+', label: 'Aktive Nutzer' },
@@ -32,7 +28,7 @@ export default function DownloadSection() {
                 style={{ border: '1px solid var(--border)' }}
               >
                 <img
-                  src={PHONE_DASHBOARD}
+                  src="https://readdy.ai/api/search-image?query=mobile%20app%20screen%20clean%20white%20UI%20showing%20speech%20coaching%20dashboard%20with%20circular%20score%20indicators%20indigo%20purple%20blue%20accent%20colors%20clean%20minimal%20modern%20interface%20presentation%20training%20analytics%20typography%20white%20background%20professional%20app%20design&width=208&height=420&seq=dl-phone-indigo-1&orientation=portrait"
                   alt="SpeachFlow Dashboard"
                   className="w-full h-auto object-top"
                 />
@@ -43,7 +39,7 @@ export default function DownloadSection() {
                 style={{ border: '1px solid var(--border)' }}
               >
                 <img
-                  src={PHONE_RECORDING}
+                  src="https://readdy.ai/api/search-image?query=mobile%20app%20screen%20white%20light%20UI%20showing%20real-time%20AI%20feedback%20during%20presentation%20recording%20with%20waveform%20audio%20visualization%20microphone%20active%20state%20indigo%20blue%20purple%20accent%20colors%20white%20background%20modern%20minimal%20clean%20typography%20professional&width=208&height=420&seq=dl-phone-indigo-2&orientation=portrait"
                   alt="SpeachFlow Aufnahme"
                   className="w-full h-auto object-top"
                 />
@@ -62,11 +58,6 @@ export default function DownloadSection() {
 
           {/* Right: Text + Buttons */}
           <div ref={ref} className="section-reveal flex-1 max-w-lg">
-            <div className="pill-badge mb-6">
-              <i className="ri-smartphone-line" />
-              Jetzt verfügbar
-            </div>
-
             <h2
               className="text-4xl md:text-5xl font-bold mb-5 leading-tight tracking-tight"
               style={{ color: 'var(--text-heading)', fontFamily: 'Inter, sans-serif' }}

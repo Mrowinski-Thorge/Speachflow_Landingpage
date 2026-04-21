@@ -1,12 +1,47 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { assetPath } from '@/utils/assetPath';
 
-const LOGO_SRC = assetPath('logo.svg');
+const IMPRESSUM_JSONLD = {
+  '@context': 'https://schema.org',
+  '@type': 'WebPage',
+  '@id': 'https://speachflow.app/impressum',
+  url: 'https://speachflow.app/impressum',
+  name: 'Impressum – SpeachFlow',
+  description: 'Impressum der SpeachFlow GmbH gemäß § 5 TMG. Unternehmensangaben, Kontakt und rechtliche Informationen.',
+  inLanguage: 'de-DE',
+  isPartOf: { '@id': 'https://speachflow.app/#website' },
+};
 
 export default function ImpressumPage() {
   useEffect(() => {
     window.scrollTo(0, 0);
+    document.title = 'Impressum – SpeachFlow';
+
+    let robotsMeta = document.querySelector('meta[name="robots"]') as HTMLMetaElement | null;
+    const prevRobots = robotsMeta?.content ?? '';
+    if (robotsMeta) {
+      robotsMeta.content = 'noindex, follow';
+    } else {
+      robotsMeta = document.createElement('meta');
+      robotsMeta.name = 'robots';
+      robotsMeta.content = 'noindex, follow';
+      document.head.appendChild(robotsMeta);
+    }
+
+    const id = 'jsonld-impressum';
+    if (!document.getElementById(id)) {
+      const script = document.createElement('script');
+      script.id = id;
+      script.type = 'application/ld+json';
+      script.textContent = JSON.stringify(IMPRESSUM_JSONLD);
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+      if (robotsMeta) robotsMeta.content = prevRobots || 'index, follow';
+    };
   }, []);
 
   return (
@@ -23,7 +58,7 @@ export default function ImpressumPage() {
         <div className="max-w-[1100px] mx-auto h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 cursor-pointer">
             <img
-              src={LOGO_SRC}
+              src="https://static.readdy.ai/image/c22c690b3fad44e0f4e8b70799dbf390/8efff0df91d4bff17be966e52d6bcb60.png"
               alt="SpeachFlow"
               className="h-9 w-auto"
             />

@@ -11,7 +11,7 @@ const ALLOWED_AUDIO_TYPES = new Set([
   'audio/mpeg',
   'audio/wav',
 ]);
-const SESSION_ID_REGEX = /^sess_[a-zA-Z0-9_-]{8,80}$/;
+const SESSION_ID_REGEX = /^sess_[a-zA-Z0-9_-]{16,80}$/;
 const FALLBACK_ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'http://localhost:5173',
@@ -24,11 +24,6 @@ function getAllowedOrigins(): string[] {
     .map((origin) => origin.trim())
     .filter(Boolean);
   return configuredOrigins.length > 0 ? configuredOrigins : FALLBACK_ALLOWED_ORIGINS;
-}
-
-function isAllowedOrigin(origin: string | null, allowedOrigins: string[]): boolean {
-  if (!origin) return false;
-  return allowedOrigins.includes(origin);
 }
 
 function getCorsHeaders(origin: string) {
@@ -149,25 +144,38 @@ Deno.serve(async (req) => {
   const allowedOrigins = getAllowedOrigins();
   const requestOrigin = req.headers.get('origin');
 
-  if (!isAllowedOrigin(requestOrigin, allowedOrigins)) {
-    return new Response(
-      JSON.stringify({ error: 'forbidden_origin' }),
-      { status: 403, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-
-  const corsHeaders = getCorsHeaders(requestOrigin!);
-
   if (req.method === 'OPTIONS') {
+    if (!requestOrigin || !allowedOrigins.includes(requestOrigin)) {
+      return new Response(
+        JSON.stringify({ error: 'forbidden_origin' }),
+        { status: 403, headers: { 'Content-Type': 'application/json', Vary: 'Origin' } }
+      );
+    }
+
+    const corsHeaders = getCorsHeaders(requestOrigin);
     return new Response('ok', { headers: corsHeaders });
   }
 
   if (req.method !== 'POST') {
+    const methodHeaders =
+      requestOrigin && allowedOrigins.includes(requestOrigin)
+        ? { ...getCorsHeaders(requestOrigin), 'Content-Type': 'application/json' }
+        : { 'Content-Type': 'application/json', Vary: 'Origin' };
+
     return new Response(
-      JSON.stringify({ error: 'Method not allowed' }),
-      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ error: 'method_not_allowed' }),
+      { status: 405, headers: methodHeaders }
     );
   }
+
+  if (!requestOrigin || !allowedOrigins.includes(requestOrigin)) {
+    return new Response(
+      JSON.stringify({ error: 'forbidden_origin' }),
+      { status: 403, headers: { 'Content-Type': 'application/json', Vary: 'Origin' } }
+    );
+  }
+
+  const corsHeaders = getCorsHeaders(requestOrigin);
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;

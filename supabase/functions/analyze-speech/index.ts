@@ -1,12 +1,44 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
 const DAILY_LIMIT = 2;
+const MAX_AUDIO_BYTES = 8 * 1024 * 1024; // 8 MB
+const ALLOWED_AUDIO_TYPES = new Set([
+  'audio/webm',
+  'audio/webm;codecs=opus',
+  'audio/ogg',
+  'audio/ogg;codecs=opus',
+  'audio/mp4',
+  'audio/mpeg',
+  'audio/wav',
+]);
+const SESSION_ID_REGEX = /^sess_[a-zA-Z0-9_-]{8,80}$/;
+const FALLBACK_ALLOWED_ORIGINS = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+];
+
+function getAllowedOrigins(): string[] {
+  const configured = Deno.env.get('ALLOWED_ORIGINS') ?? '';
+  const configuredOrigins = configured
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  return configuredOrigins.length > 0 ? configuredOrigins : FALLBACK_ALLOWED_ORIGINS;
+}
+
+function isAllowedOrigin(origin: string | null, allowedOrigins: string[]): boolean {
+  if (!origin) return false;
+  return allowedOrigins.includes(origin);
+}
+
+function getCorsHeaders(origin: string) {
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    Vary: 'Origin',
+  };
+}
 
 async function getGoogleAccessToken(clientEmail: string, privateKey: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
@@ -114,8 +146,27 @@ async function collectStreamedText(response: Response): Promise<string> {
 }
 
 Deno.serve(async (req) => {
+  const allowedOrigins = getAllowedOrigins();
+  const requestOrigin = req.headers.get('origin');
+
+  if (!isAllowedOrigin(requestOrigin, allowedOrigins)) {
+    return new Response(
+      JSON.stringify({ error: 'forbidden_origin' }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const corsHeaders = getCorsHeaders(requestOrigin!);
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }),
+      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 
   try {
@@ -161,14 +212,35 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const formData = await req.formData();
-    const audioFile = formData.get('audio') as File;
-    const sessionId = formData.get('session_id') as string;
+    const audioFile = formData.get('audio');
+    const sessionId = formData.get('session_id');
     const scenario = (formData.get('scenario') as string) || 'speech';
 
-    if (!audioFile || !sessionId) {
+    if (!(audioFile instanceof File) || typeof sessionId !== 'string') {
       return new Response(
         JSON.stringify({ error: 'Missing audio or session_id' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!SESSION_ID_REGEX.test(sessionId)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid session_id' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (audioFile.size > MAX_AUDIO_BYTES) {
+      return new Response(
+        JSON.stringify({ error: 'Audio file too large' }),
+        { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!ALLOWED_AUDIO_TYPES.has(audioFile.type)) {
+      return new Response(
+        JSON.stringify({ error: 'Unsupported audio type' }),
+        { status: 415, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -268,7 +340,7 @@ Regeln:
       const errText = await geminiResponse.text();
       console.error('Vertex AI error:', geminiResponse.status, errText);
       return new Response(
-        JSON.stringify({ error: 'Vertex AI error', status: geminiResponse.status, details: errText }),
+        JSON.stringify({ error: 'Vertex AI error', status: geminiResponse.status }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -319,7 +391,7 @@ Regeln:
   } catch (err) {
     console.error('Edge function error:', err);
     return new Response(
-      JSON.stringify({ error: 'Internal server error', details: String(err) }),
+      JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

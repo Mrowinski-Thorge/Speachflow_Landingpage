@@ -1,16 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// Allow both www and non-www
 const ALLOWED_ORIGINS = [
   'https://speachflow.app',
   'https://www.speachflow.app',
 ];
 
 const DAILY_LIMIT = 2;
-const COOLDOWN_DAYS = 2;
-
-// Minimum audio file size to consider >= 3 seconds (very rough estimate)
-// 3s of webm/opus at ~32kbps = ~12000 bytes — use 8000 as conservative threshold
+const COOLDOWN_DAYS = 1;
 const MIN_AUDIO_BYTES = 8000;
 
 async function getGoogleAccessToken(clientEmail: string, privateKey: string): Promise<string> {
@@ -121,10 +117,9 @@ async function collectStreamedText(response: Response): Promise<string> {
 Deno.serve(async (req) => {
   const origin = req.headers.get('origin') ?? '';
 
-  // Build CORS headers — reflect allowed origin or block
   const corsHeaders: Record<string, string> = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
   };
 
   if (ALLOWED_ORIGINS.includes(origin)) {
@@ -145,10 +140,49 @@ Deno.serve(async (req) => {
     );
   }
 
-  try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
 
+  // ── GET: Check current rate limit status for a session ──
+  if (req.method === 'GET') {
+    const url = new URL(req.url);
+    const sessionId = url.searchParams.get('session_id');
+    if (!sessionId) {
+      return new Response(
+        JSON.stringify({ error: 'Missing session_id' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const { data: rateData } = await supabase
+      .from('live_test_rate_limit')
+      .select('used_count, cooldown_until')
+      .eq('session_id', sessionId)
+      .maybeSingle();
+
+    const usedCount = rateData?.used_count ?? 0;
+    const cooldownUntil: string | null = rateData?.cooldown_until ?? null;
+
+    // If cooldown expired, treat as 0
+    const effectiveUsed = (cooldownUntil && today >= cooldownUntil) ? 0 : usedCount;
+    const isBlocked = (cooldownUntil && today < cooldownUntil) || effectiveUsed >= DAILY_LIMIT;
+
+    return new Response(
+      JSON.stringify({
+        used: effectiveUsed,
+        limit: DAILY_LIMIT,
+        remaining: Math.max(0, DAILY_LIMIT - effectiveUsed),
+        is_blocked: isBlocked,
+        cooldown_until: (cooldownUntil && today < cooldownUntil) ? cooldownUntil : null,
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // ── POST: Analyze speech ──
+  try {
     const clientEmail =
       Deno.env.get('GCP_CLIENT_EMAIL') ??
       Deno.env.get('GOOGLE_CLIENT_EMAIL') ??
@@ -172,14 +206,11 @@ Deno.serve(async (req) => {
     if (!projectId) missing.push('GCP_PROJECT_ID');
 
     if (missing.length > 0) {
-      console.error('Missing secrets:', missing.join(', '));
       return new Response(
         JSON.stringify({ error: 'missing_credentials', missing }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
     const formData = await req.formData();
     const audioFile = formData.get('audio') as File;
@@ -193,8 +224,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── Audio length guard (backend) ──
-    // Check file size as proxy for duration. < 8KB very likely < 3s
+    // Audio length guard
     if (audioFile.size < MIN_AUDIO_BYTES) {
       return new Response(
         JSON.stringify({
@@ -205,9 +235,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── Rate limit check ──
+    // Rate limit check
     const today = new Date().toISOString().split('T')[0];
-
     const { data: rateData } = await supabase
       .from('live_test_rate_limit')
       .select('*')
@@ -217,7 +246,6 @@ Deno.serve(async (req) => {
     const currentCount = rateData?.used_count ?? 0;
     const cooldownUntil: string | null = rateData?.cooldown_until ?? null;
 
-    // Blocked by cooldown
     if (cooldownUntil && today < cooldownUntil) {
       return new Response(
         JSON.stringify({
@@ -231,7 +259,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Reset count after cooldown expired
     const effectiveCount = (cooldownUntil && today >= cooldownUntil) ? 0 : currentCount;
 
     if (effectiveCount >= DAILY_LIMIT) {
@@ -246,7 +273,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── Audio → base64 ──
+    // Audio → base64
     const audioBuffer = await audioFile.arrayBuffer();
     const audioBytes = new Uint8Array(audioBuffer);
     let binary = '';
@@ -264,14 +291,11 @@ Deno.serve(async (req) => {
     };
     const scenarioLabel = scenarioLabels[scenario] || 'Vortrag';
 
-    console.log('Requesting Google access token...');
     const accessToken = await getGoogleAccessToken(clientEmail!, privateKey!);
-    console.log('Access token obtained');
 
-    const region = 'us-central1';
+    const region = 'global';
     const model = 'gemini-3.1-flash-lite-preview';
-    const vertexUrl = `https://${region}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:streamGenerateContent`;
-    console.log('Calling model:', model);
+    const vertexUrl = `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:streamGenerateContent`;
 
     const geminiResponse = await fetch(vertexUrl, {
       method: 'POST',
@@ -301,12 +325,11 @@ Nur wenn die Aufnahme mindestens 3 vollständige gesprochene Sätze enthält UND
 
 Falls die Sprache nicht erkennbar ist, zu kurz, zu leise oder weniger als 3 vollständige Sätze:
 Antworte NUR mit:
-{"transcript":"","overall_score":0,"strengths":[],"improvements":[],"summary":"Zu wenig zum Auswerten – bitte sprich mindestens 3 vollständige Sätze."}
+{"transcript":"","strengths":[],"improvements":[],"summary":"Zu wenig zum Auswerten – bitte sprich mindestens 3 vollständige Sätze."}
 
 AUSGABE – NUR dieses JSON, kein Markdown, kein erklärender Text davor oder danach:
 {
   "transcript": "<vollständige wörtliche Transkription>",
-  "overall_score": <0-100 realistisch>,
   "strengths": ["<Stärke 1>", "<Stärke 2>", "<Stärke 3>"],
   "improvements": ["<Verbesserung 1 mit konkretem Tipp>", "<Verbesserung 2 mit konkretem Tipp>", "<Verbesserung 3 mit konkretem Tipp>"],
   "summary": "<Genau ein Satz Gesamtfazit>"
@@ -329,24 +352,21 @@ AUSGABE – NUR dieses JSON, kein Markdown, kein erklärender Text davor oder da
     }
 
     const rawText = await collectStreamedText(geminiResponse);
-    console.log('Raw response length:', rawText.length);
 
     let analysis;
     try {
       const cleaned = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       analysis = JSON.parse(cleaned);
     } catch {
-      console.error('JSON parse failed:', rawText.substring(0, 300));
       analysis = {
         transcript: '',
-        overall_score: 0,
         strengths: [],
         improvements: [],
         summary: 'Zu wenig zum Auswerten – bitte sprich mindestens 3 vollständige Sätze.',
       };
     }
 
-    // ── Update rate limit ──
+    // Update rate limit
     const newCount = effectiveCount + 1;
     const isLastAttempt = newCount >= DAILY_LIMIT;
 

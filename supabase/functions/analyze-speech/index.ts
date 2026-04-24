@@ -346,7 +346,7 @@ AUSGABE – NUR dieses JSON, kein Markdown, kein erklärender Text davor oder da
       const errText = await geminiResponse.text();
       console.error('Vertex AI error:', geminiResponse.status, errText);
       return new Response(
-        JSON.stringify({ error: 'Vertex AI error', status: geminiResponse.status, details: errText }),
+        JSON.stringify({ error: 'Vertex AI error', status: geminiResponse.status }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

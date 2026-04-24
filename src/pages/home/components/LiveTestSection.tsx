@@ -3,6 +3,12 @@ import { useScrollReveal } from '@/hooks/useScrollReveal';
 
 const EDGE_FUNCTION_URL = 'https://hfaxhfyugkvqxpgwbdht.supabase.co/functions/v1/analyze-speech';
 const DAILY_LIMIT = 2;
+const ANALYZE_STEPS = [
+  'Audio wird verarbeitet...',
+  'Sprache wird transkribiert...',
+  'Qualität wird bewertet...',
+  'Feedback wird generiert...',
+];
 
 interface AnalysisResult {
   transcript: string;
@@ -57,13 +63,6 @@ export default function LiveTestSection() {
   const sessionId = getOrCreateSessionId();
   const MIN_RECORDING_SECONDS = 3;
 
-  const analyzeSteps = [
-    'Audio wird verarbeitet...',
-    'Sprache wird transkribiert...',
-    'Qualität wird bewertet...',
-    'Feedback wird generiert...',
-  ];
-
   const stopAudioLevel = useCallback(() => {
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
@@ -117,7 +116,7 @@ export default function LiveTestSection() {
     if (stage !== 'analyzing') return;
     setAnalyzeStep(0);
     const iv = setInterval(() => {
-      setAnalyzeStep((s) => (s + 1) % analyzeSteps.length);
+      setAnalyzeStep((s) => (s + 1) % ANALYZE_STEPS.length);
     }, 1800);
     return () => clearInterval(iv);
   }, [stage]);
@@ -432,7 +431,7 @@ export default function LiveTestSection() {
                   KI analysiert deine Aufnahme
                 </p>
                 <p className="text-sm transition-all duration-500" style={{ color: 'var(--text-secondary)' }}>
-                  {analyzeSteps[analyzeStep]}
+                  {ANALYZE_STEPS[analyzeStep]}
                 </p>
               </div>
             </div>

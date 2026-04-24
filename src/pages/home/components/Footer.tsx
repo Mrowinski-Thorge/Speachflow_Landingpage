@@ -104,7 +104,7 @@ export default function Footer() {
           {/* Logo + tagline */}
           <div className="flex items-center gap-3">
             <img
-              src="https://static.readdy.ai/image/c22c690b3fad44e0f4e8b70799dbf390/8efff0df91d4bff17be966e52d6bcb60.png"
+              src="/logo.png"
               alt="SpeachFlow"
               className="h-7 w-auto"
             />

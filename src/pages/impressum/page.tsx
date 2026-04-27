@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
+
 const IMPRESSUM_JSONLD = {
   '@context': 'https://schema.org',
   '@type': 'WebPage',
@@ -58,7 +59,7 @@ export default function ImpressumPage() {
         <div className="max-w-[1100px] mx-auto h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 cursor-pointer">
             <img
-              src="https://static.readdy.ai/image/c22c690b3fad44e0f4e8b70799dbf390/8efff0df91d4bff17be966e52d6bcb60.png"
+              src="/logo.png"
               alt="SpeachFlow"
               className="h-9 w-auto"
             />
@@ -108,8 +109,8 @@ export default function ImpressumPage() {
               style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)' }}
             >
               <p className="text-lg font-bold" style={{ color: 'var(--text-heading)' }}>SpeachFlow GmbH</p>
-              <p>Musterstraße 1</p>
-              <p>10115 Berlin</p>
+              <p>Gerhart-Hauptmann-Ring 7J</p>
+              <p>21629 Neu Wulmstorf</p>
               <p>Deutschland</p>
             </div>
           </section>
@@ -120,8 +121,7 @@ export default function ImpressumPage() {
             </h2>
             <div className="space-y-3">
               {[
-                { icon: 'ri-phone-line', label: 'Telefon', value: '+49 30 12345678' },
-                { icon: 'ri-mail-line', label: 'E-Mail', value: 'hallo@speachflow.app' },
+                { icon: 'ri-mail-line', label: 'E-Mail', value: 'legacy@speachflow.app' },
                 { icon: 'ri-global-line', label: 'Website', value: 'www.speachflow.app' },
               ].map((item) => (
                 <div
@@ -146,36 +146,13 @@ export default function ImpressumPage() {
 
           <section>
             <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--text-heading)', fontFamily: 'Inter, sans-serif' }}>
-              Handelsregister
-            </h2>
-            <div
-              className="p-6 rounded-2xl space-y-2"
-              style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-            >
-              <div className="flex justify-between">
-                <span style={{ color: 'var(--text-muted)' }}>Registergericht</span>
-                <span className="font-semibold" style={{ color: 'var(--text-heading)' }}>Amtsgericht Berlin-Charlottenburg</span>
-              </div>
-              <div className="flex justify-between">
-                <span style={{ color: 'var(--text-muted)' }}>Registernummer</span>
-                <span className="font-semibold" style={{ color: 'var(--text-heading)' }}>HRB 123456 B</span>
-              </div>
-              <div className="flex justify-between">
-                <span style={{ color: 'var(--text-muted)' }}>USt-IdNr.</span>
-                <span className="font-semibold" style={{ color: 'var(--text-heading)' }}>DE123456789</span>
-              </div>
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--text-heading)', fontFamily: 'Inter, sans-serif' }}>
               Geschäftsführung
             </h2>
             <div
               className="p-6 rounded-2xl"
               style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)' }}
             >
-              <p className="font-semibold" style={{ color: 'var(--text-heading)' }}>Max Mustermann</p>
+              <p className="font-semibold" style={{ color: 'var(--text-heading)' }}>Thorge Mrowinski</p>
               <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Geschäftsführer</p>
             </div>
           </section>
@@ -191,9 +168,9 @@ export default function ImpressumPage() {
               className="mt-4 p-6 rounded-2xl"
               style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)' }}
             >
-              <p className="font-semibold" style={{ color: 'var(--text-heading)' }}>Max Mustermann</p>
-              <p>Musterstraße 1</p>
-              <p>10115 Berlin</p>
+              <p className="font-semibold" style={{ color: 'var(--text-heading)' }}>Thorge Mrowinski</p>
+              <p>Gerhart-Hauptmann-Ring 7J</p>
+              <p>21629 Neu Wulmstorf</p>
             </div>
           </section>
 
@@ -251,6 +228,7 @@ export default function ImpressumPage() {
           </div>
         </div>
       </div>
+
     </div>
   );
 }

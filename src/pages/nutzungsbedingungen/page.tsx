@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
+
 const NUTZUNG_JSONLD = {
   '@context': 'https://schema.org',
   '@type': 'WebPage',
@@ -58,7 +59,7 @@ export default function NutzungsbedingungenPage() {
         <div className="max-w-[1100px] mx-auto h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 cursor-pointer">
             <img
-              src="https://static.readdy.ai/image/c22c690b3fad44e0f4e8b70799dbf390/8efff0df91d4bff17be966e52d6bcb60.png"
+              src="/logo.png"
               alt="SpeachFlow"
               className="h-9 w-auto"
             />
@@ -87,13 +88,13 @@ export default function NutzungsbedingungenPage() {
             Rechtliches
           </div>
           <h1
-            className="text-4xl md:text-5xl font-black tracking-tight mb-4"
+            className="text-2xl sm:text-4xl md:text-5xl font-black tracking-tight mb-4 break-words"
             style={{ color: 'var(--text-heading)', fontFamily: 'Inter, sans-serif' }}
           >
-            Nutzungsbedingungen
+            Nutzungs&shy;bedingungen
           </h1>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            Zuletzt aktualisiert: Januar 2025
+            Zuletzt aktualisiert: April 2026
           </p>
         </div>
 
@@ -104,7 +105,7 @@ export default function NutzungsbedingungenPage() {
               1. Geltungsbereich
             </h2>
             <p>
-              Diese Nutzungsbedingungen gelten für die Nutzung der SpeachFlow-App und der Website speachflow.app (nachfolgend &ldquo;Dienst&rdquo;), betrieben von der SpeachFlow GmbH, Musterstraße 1, 10115 Berlin (nachfolgend &ldquo;wir&rdquo; oder &ldquo;SpeachFlow&rdquo;).
+              Diese Nutzungsbedingungen gelten für die Nutzung der SpeachFlow-App und der Website speachflow.app (nachfolgend &ldquo;Dienst&rdquo;), betrieben von der SpeachFlow GmbH, Gerhart-Hauptmann-Ring 7J, 21629 Neu Wulmstorf (nachfolgend &ldquo;wir&rdquo; oder &ldquo;SpeachFlow&rdquo;).
             </p>
           </section>
 
@@ -144,7 +145,7 @@ export default function NutzungsbedingungenPage() {
               Für die Nutzung bestimmter Funktionen ist eine Registrierung erforderlich. Du bist verpflichtet, bei der Registrierung wahrheitsgemäße Angaben zu machen und deine Zugangsdaten sicher aufzubewahren.
             </p>
             <p>
-              Du bist für alle Aktivitäten verantwortlich, die unter deinem Konto stattfinden. Bei Verdacht auf unbefugten Zugriff informiere uns bitte umgehend unter <a href="mailto:hallo@speachflow.app" className="font-semibold" style={{ color: 'var(--indigo)' }}>hallo@speachflow.app</a>.
+              Du bist für alle Aktivitäten verantwortlich, die unter deinem Konto stattfinden. Bei Verdacht auf unbefugten Zugriff informiere uns bitte umgehend unter <a href="mailto:legacy@speachflow.app" className="font-semibold" style={{ color: 'var(--indigo)' }}>legacy@speachflow.app</a>.
             </p>
           </section>
 
@@ -166,7 +167,7 @@ export default function NutzungsbedingungenPage() {
                   'Automatisiertes Auslesen von Daten (Scraping)',
                   'Nutzung für illegale oder schädliche Zwecke',
                   'Weitergabe von Zugangsdaten an Dritte',
-                  'Umgehung von Sicherheitsmaßnahmen',
+                  'Umgehung von Sicherheitsmaßnahmen oder Rate-Limits',
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2">
                     <i className="ri-close-line text-xs mt-0.5 flex-shrink-0" style={{ color: '#ef4444' }} />
@@ -179,7 +180,40 @@ export default function NutzungsbedingungenPage() {
 
           <section>
             <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--text-heading)', fontFamily: 'Inter, sans-serif' }}>
-              5. Preise und Zahlungsbedingungen
+              5. Live-Test auf der Website (kostenloses Coaching-Angebot)
+            </h2>
+            <p className="mb-4">
+              Der „Live-Test“ auf der Website ist ein <strong style={{ color: 'var(--text-heading)' }}>kostenloses Coaching-Angebot</strong>, das auf <strong style={{ color: 'var(--text-heading)' }}>2 Analysen pro Tag pro Gerät</strong> limitiert ist. Dieses Limit dient der Missbrauchsprävention und der Gewährleistung einer gleichmäßigen Servicequalität für alle Nutzer.
+            </p>
+            <p className="mb-4">
+              Zur Durchsetzung des Limits wird eine anonyme, lokal berechnete Geräte-Prüfsumme (Fingerprint) verwendet. Diese enthält keine personenbezogenen Daten (keine IP-Adresse, kein Name, kein Standort) und dient ausschließlich der fairen Nutzungsverwaltung.
+            </p>
+            <div
+              className="p-5 rounded-2xl mb-4"
+              style={{ backgroundColor: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.12)' }}
+            >
+              <p className="text-sm font-bold mb-3" style={{ color: '#ef4444' }}>Ausdrücklich untersagt ist:</p>
+              <ul className="space-y-1.5 text-sm">
+                {[
+                  'Die Umgehung des Tageslimits durch Manipulation, Löschen oder Verändern der anonymen Geräte-ID oder des Local Storage',
+                  'Der Einsatz von Automatisierungstools, VPNs oder anderen Mitteln zur Umgehung des Rate-Limits',
+                  'Jede andere Form der missbräuchlichen Nutzung des kostenlosen Analyse-Angebots',
+                ].map((item) => (
+                  <li key={item} className="flex items-start gap-2">
+                    <i className="ri-close-line text-xs mt-0.5 flex-shrink-0" style={{ color: '#ef4444' }} />
+                    <span style={{ color: 'var(--text-secondary)' }}>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <p>
+              Nach Erreichen des Limits wird dir angezeigt, dass du die vollständige App herunterladen kannst, um unbegrenzte Analysen zu erhalten. Das Rate-Limit wird täglich um 00:00 Uhr zurückgesetzt.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--text-heading)', fontFamily: 'Inter, sans-serif' }}>
+              6. Preise und Zahlungsbedingungen
             </h2>
             <p className="mb-4">
               SpeachFlow bietet sowohl kostenlose als auch kostenpflichtige Pläne an. Die aktuellen Preise sind auf unserer Website einsehbar.
@@ -194,19 +228,19 @@ export default function NutzungsbedingungenPage() {
 
           <section>
             <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--text-heading)', fontFamily: 'Inter, sans-serif' }}>
-              6. Widerrufsrecht
+              7. Widerrufsrecht
             </h2>
             <p className="mb-4">
               Als Verbraucher hast du das Recht, innerhalb von 14 Tagen ohne Angabe von Gründen von diesem Vertrag zurückzutreten. Die Widerrufsfrist beträgt 14 Tage ab dem Tag des Vertragsabschlusses.
             </p>
             <p>
-              Um dein Widerrufsrecht auszuüben, teile uns deine Entscheidung per E-Mail an <a href="mailto:hallo@speachflow.app" className="font-semibold" style={{ color: 'var(--indigo)' }}>hallo@speachflow.app</a> mit.
+              Um dein Widerrufsrecht auszuüben, teile uns deine Entscheidung per E-Mail an <a href="mailto:legacy@speachflow.app" className="font-semibold" style={{ color: 'var(--indigo)' }}>legacy@speachflow.app</a> mit.
             </p>
           </section>
 
           <section>
             <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--text-heading)', fontFamily: 'Inter, sans-serif' }}>
-              7. Haftungsbeschränkung
+              8. Haftungsbeschränkung
             </h2>
             <p className="mb-4">
               SpeachFlow haftet unbeschränkt für Schäden aus der Verletzung des Lebens, des Körpers oder der Gesundheit sowie für vorsätzliche oder grob fahrlässige Pflichtverletzungen.
@@ -218,7 +252,7 @@ export default function NutzungsbedingungenPage() {
 
           <section>
             <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--text-heading)', fontFamily: 'Inter, sans-serif' }}>
-              8. Änderungen der Nutzungsbedingungen
+              9. Änderungen der Nutzungsbedingungen
             </h2>
             <p>
               Wir behalten uns vor, diese Nutzungsbedingungen zu ändern. Über wesentliche Änderungen informieren wir dich mindestens 30 Tage im Voraus per E-Mail. Wenn du dem Dienst nach Inkrafttreten der Änderungen weiterhin nutzt, gilt dies als Zustimmung zu den neuen Bedingungen.
@@ -227,21 +261,21 @@ export default function NutzungsbedingungenPage() {
 
           <section>
             <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--text-heading)', fontFamily: 'Inter, sans-serif' }}>
-              9. Anwendbares Recht und Gerichtsstand
+              10. Anwendbares Recht und Gerichtsstand
             </h2>
             <p>
-              Es gilt deutsches Recht unter Ausschluss des UN-Kaufrechts. Gerichtsstand für alle Streitigkeiten aus diesem Vertrag ist Berlin, sofern du Kaufmann, juristische Person des öffentlichen Rechts oder öffentlich-rechtliches Sondervermögen bist.
+              Es gilt deutsches Recht unter Ausschluss des UN-Kaufrechts. Gerichtsstand für alle Streitigkeiten aus diesem Vertrag ist Hamburg, sofern du Kaufmann, juristische Person des öffentlichen Rechts oder öffentlich-rechtliches Sondervermögen bist.
             </p>
           </section>
 
           <section>
             <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--text-heading)', fontFamily: 'Inter, sans-serif' }}>
-              10. Kontakt
+              11. Kontakt
             </h2>
             <p>
               Bei Fragen zu diesen Nutzungsbedingungen wende dich an:{' '}
-              <a href="mailto:hallo@speachflow.app" className="font-semibold" style={{ color: 'var(--indigo)' }}>
-                hallo@speachflow.app
+              <a href="mailto:legacy@speachflow.app" className="font-semibold" style={{ color: 'var(--indigo)' }}>
+                legacy@speachflow.app
               </a>
             </p>
           </section>
@@ -267,6 +301,7 @@ export default function NutzungsbedingungenPage() {
           </div>
         </div>
       </div>
+
     </div>
   );
 }

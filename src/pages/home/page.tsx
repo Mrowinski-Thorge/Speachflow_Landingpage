@@ -9,6 +9,7 @@ import PricingSection from './components/PricingSection';
 import HowItWorksSection from './components/HowItWorksSection';
 import Footer from './components/Footer';
 
+
 const HOME_JSONLD = {
   '@context': 'https://schema.org',
   '@graph': [
@@ -86,6 +87,7 @@ export default function HomePage() {
         <HowItWorksSection />
       </main>
       <Footer />
+
     </div>
   );
 }

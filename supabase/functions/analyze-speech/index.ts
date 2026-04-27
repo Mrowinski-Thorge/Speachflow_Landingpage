@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
 
   const corsHeaders: Record<string, string> = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
   };
 
   if (ALLOWED_ORIGINS.includes(origin)) {
@@ -140,46 +140,17 @@ Deno.serve(async (req) => {
     );
   }
 
+  // Only POST allowed
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'method_not_allowed' }),
+      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseKey);
-
-  // ── GET: Check current rate limit status for a session ──
-  if (req.method === 'GET') {
-    const url = new URL(req.url);
-    const sessionId = url.searchParams.get('session_id');
-    if (!sessionId) {
-      return new Response(
-        JSON.stringify({ error: 'Missing session_id' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const today = new Date().toISOString().split('T')[0];
-    const { data: rateData } = await supabase
-      .from('live_test_rate_limit')
-      .select('used_count, cooldown_until')
-      .eq('session_id', sessionId)
-      .maybeSingle();
-
-    const usedCount = rateData?.used_count ?? 0;
-    const cooldownUntil: string | null = rateData?.cooldown_until ?? null;
-
-    // If cooldown expired, treat as 0
-    const effectiveUsed = (cooldownUntil && today >= cooldownUntil) ? 0 : usedCount;
-    const isBlocked = (cooldownUntil && today < cooldownUntil) || effectiveUsed >= DAILY_LIMIT;
-
-    return new Response(
-      JSON.stringify({
-        used: effectiveUsed,
-        limit: DAILY_LIMIT,
-        remaining: Math.max(0, DAILY_LIMIT - effectiveUsed),
-        is_blocked: isBlocked,
-        cooldown_until: (cooldownUntil && today < cooldownUntil) ? cooldownUntil : null,
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
 
   // ── POST: Analyze speech ──
   try {
@@ -214,12 +185,14 @@ Deno.serve(async (req) => {
 
     const formData = await req.formData();
     const audioFile = formData.get('audio') as File;
-    const sessionId = formData.get('session_id') as string;
+    const deviceId = formData.get('device_id') as string;
+    const sessionId = (formData.get('session_id') as string) ?? '';
     const scenario = (formData.get('scenario') as string) || 'speech';
 
-    if (!audioFile || !sessionId) {
+    // device_id is required
+    if (!audioFile || !deviceId) {
       return new Response(
-        JSON.stringify({ error: 'Missing audio or session_id' }),
+        JSON.stringify({ error: 'Missing audio or device_id' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -235,12 +208,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Rate limit check
+    // Rate limit check – keyed by device_id
     const today = new Date().toISOString().split('T')[0];
     const { data: rateData } = await supabase
       .from('live_test_rate_limit')
       .select('*')
-      .eq('session_id', sessionId)
+      .eq('device_id', deviceId)
       .maybeSingle();
 
     const currentCount = rateData?.used_count ?? 0;
@@ -293,9 +266,10 @@ Deno.serve(async (req) => {
 
     const accessToken = await getGoogleAccessToken(clientEmail!, privateKey!);
 
-    const region = 'global';
+    // EU-Region: europe-west3 (Frankfurt)
+    const region = 'europe-west3';
     const model = 'gemini-3.1-flash-lite-preview';
-    const vertexUrl = `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:streamGenerateContent`;
+    const vertexUrl = `https://europe-west3-aiplatform.googleapis.com/v1/projects/${projectId}/locations/europe-west3/publishers/google/models/${model}:streamGenerateContent`;
 
     const geminiResponse = await fetch(vertexUrl, {
       method: 'POST',
@@ -323,6 +297,8 @@ Nur wenn die Aufnahme mindestens 3 vollständige gesprochene Sätze enthält UND
 - Identifiziere genau 3 konkrete Schwächen / Verbesserungsbereiche mit praktischem Tipp
 - Schreibe GENAU EINEN abschließenden Satz als Gesamtfazit
 
+WICHTIG: Gib KEINEN numerischen Score, KEINE Prozentzahl, KEINE Punktzahl und KEINE Bewertungsskala aus. Kein "Gesamtpunktzahl", kein "Score", keine "Note".
+
 Falls die Sprache nicht erkennbar ist, zu kurz, zu leise oder weniger als 3 vollständige Sätze:
 Antworte NUR mit:
 {"transcript":"","strengths":[],"improvements":[],"summary":"Zu wenig zum Auswerten – bitte sprich mindestens 3 vollständige Sätze."}
@@ -346,7 +322,7 @@ AUSGABE – NUR dieses JSON, kein Markdown, kein erklärender Text davor oder da
       const errText = await geminiResponse.text();
       console.error('Vertex AI error:', geminiResponse.status, errText);
       return new Response(
-        JSON.stringify({ error: 'Vertex AI error', status: geminiResponse.status }),
+        JSON.stringify({ error: 'Vertex AI error', status: geminiResponse.status, details: errText }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -366,7 +342,7 @@ AUSGABE – NUR dieses JSON, kein Markdown, kein erklärender Text davor oder da
       };
     }
 
-    // Update rate limit
+    // Update rate limit – keyed by device_id
     const newCount = effectiveCount + 1;
     const isLastAttempt = newCount >= DAILY_LIMIT;
 
@@ -387,12 +363,13 @@ AUSGABE – NUR dieses JSON, kein Markdown, kein erklärender Text davor oder da
           updated_at: new Date().toISOString(),
           ...(cooldownDate ? { cooldown_until: cooldownDate } : {}),
         })
-        .eq('session_id', sessionId);
+        .eq('device_id', deviceId);
     } else if (!rateData) {
       await supabase
         .from('live_test_rate_limit')
         .insert({
-          session_id: sessionId,
+          device_id: deviceId,
+          session_id: sessionId || deviceId,
           used_count: newCount,
           last_used_date: today,
           ...(cooldownDate ? { cooldown_until: cooldownDate } : {}),
@@ -412,7 +389,7 @@ AUSGABE – NUR dieses JSON, kein Markdown, kein erklärender Text davor oder da
   } catch (err) {
     console.error('Edge function error:', err);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
+      JSON.stringify({ error: 'Internal server error', details: String(err) }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

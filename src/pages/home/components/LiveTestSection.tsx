@@ -5,21 +5,14 @@ const EDGE_FUNCTION_URL = 'https://hfaxhfyugkvqxpgwbdht.supabase.co/functions/v1
 const DAILY_LIMIT = 2;
 const LOCAL_KEY = 'speachflow_v2';
 const FP_KEY = 'speachflow_fp';
+const SESSION_KEY = 'speachflow_session_id';
 const MIN_RECORDING_SECONDS = 3;
-const ANALYZE_STEPS = [
-  'Audio wird verarbeitet...',
-  'Sprache wird transkribiert...',
-  'Qualität wird bewertet...',
-  'Feedback wird generiert...',
-];
 
 // ─────────────────────────────────────────────
 // Browser Fingerprint (Canvas + Navigator)
 // ─────────────────────────────────────────────
 async function buildFingerprint(): Promise<string> {
   const parts: string[] = [];
-
-  // Navigator signals
   parts.push(navigator.language ?? '');
   parts.push(String(navigator.hardwareConcurrency ?? 0));
   parts.push(String((navigator as { deviceMemory?: number }).deviceMemory ?? 0));
@@ -28,7 +21,6 @@ async function buildFingerprint(): Promise<string> {
   parts.push(String(screen.colorDepth));
   parts.push(Intl.DateTimeFormat().resolvedOptions().timeZone ?? '');
 
-  // Canvas fingerprint
   try {
     const canvas = document.createElement('canvas');
     canvas.width = 200;
@@ -40,23 +32,20 @@ async function buildFingerprint(): Promise<string> {
       ctx.fillStyle = '#f60';
       ctx.fillRect(125, 1, 62, 20);
       ctx.fillStyle = '#069';
-      ctx.fillText('SpeachFlow🎤', 2, 15);
+      ctx.fillText('SpeachFlow\uD83C\uDFA4', 2, 15);
       ctx.fillStyle = 'rgba(102,204,0,0.7)';
-      ctx.fillText('SpeachFlow🎤', 4, 17);
+      ctx.fillText('SpeachFlow\uD83C\uDFA4', 4, 17);
       parts.push(canvas.toDataURL().slice(-80));
     }
   } catch { /* canvas blocked */ }
 
   const raw = parts.join('|');
-
-  // Hash via SubtleCrypto
   try {
     const encoded = new TextEncoder().encode(raw);
     const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
   } catch {
-    // Fallback: simple djb2
     let h = 5381;
     for (let i = 0; i < raw.length; i++) h = ((h << 5) + h) ^ raw.charCodeAt(i);
     return Math.abs(h).toString(16).padStart(8, '0');
@@ -64,24 +53,23 @@ async function buildFingerprint(): Promise<string> {
 }
 
 // ─────────────────────────────────────────────
-// Session ID (localStorage, stable per browser)
+// Session ID – stable per browser, never changes
 // ─────────────────────────────────────────────
 function getOrCreateSessionId(): string {
-  const key = 'speachflow_session_id';
-  let id = localStorage.getItem(key);
+  let id = localStorage.getItem(SESSION_KEY);
   if (!id) {
     id = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    localStorage.setItem(key, id);
+    localStorage.setItem(SESSION_KEY, id);
   }
   return id;
 }
 
 // ─────────────────────────────────────────────
-// Local limit state (per fingerprint + localStorage)
+// Local limit state
 // ─────────────────────────────────────────────
 interface LocalState {
   used: number;
-  date: string; // YYYY-MM-DD
+  date: string;
   fp: string;
 }
 
@@ -94,9 +82,7 @@ function loadLocal(fp: string): LocalState {
     const raw = localStorage.getItem(LOCAL_KEY);
     if (!raw) return { used: 0, date: todayStr(), fp };
     const parsed = JSON.parse(raw) as LocalState;
-    // Reset if new day
     if (parsed.date !== todayStr()) return { used: 0, date: todayStr(), fp };
-    // If fingerprint changed (incognito / cleared storage), still count
     return parsed;
   } catch {
     return { used: 0, date: todayStr(), fp };
@@ -107,24 +93,25 @@ function saveLocal(state: LocalState): void {
   localStorage.setItem(LOCAL_KEY, JSON.stringify(state));
 }
 
-// checkLimit: returns true if allowed, false if blocked
-function checkLocalLimit(fp: string): { allowed: boolean; used: number } {
+function getLocalUsed(fp: string): number {
   const state = loadLocal(fp);
-  // Also check fingerprint-keyed storage as second layer
   const fpUsedRaw = localStorage.getItem(`${FP_KEY}_${fp}`);
   const fpUsed = fpUsedRaw ? parseInt(fpUsedRaw, 10) : 0;
-  const effectiveUsed = Math.max(state.used, fpUsed);
-  return { allowed: effectiveUsed < DAILY_LIMIT, used: effectiveUsed };
+  return Math.max(state.used, fpUsed);
 }
 
 function incrementLocal(fp: string): void {
   const state = loadLocal(fp);
   const newUsed = state.used + 1;
   saveLocal({ used: newUsed, date: todayStr(), fp });
-  // Also update fingerprint layer
   const fpUsedRaw = localStorage.getItem(`${FP_KEY}_${fp}`);
   const fpUsed = fpUsedRaw ? parseInt(fpUsedRaw, 10) : 0;
   localStorage.setItem(`${FP_KEY}_${fp}`, String(Math.max(newUsed, fpUsed + 1)));
+}
+
+function forceLocalToLimit(fp: string): void {
+  saveLocal({ used: DAILY_LIMIT, date: todayStr(), fp });
+  localStorage.setItem(`${FP_KEY}_${fp}`, String(DAILY_LIMIT));
 }
 
 // ─────────────────────────────────────────────
@@ -142,43 +129,105 @@ interface AnalysisResult {
 }
 
 type Stage =
-  | 'loading'      // startup: checking server limit
-  | 'blocked'      // server says limit reached on open
+  | 'loading'
+  | 'blocked'
   | 'idle'
   | 'recording'
   | 'analyzing'
-  | 'result'       // 1st result shown
-  | 'limit'        // 2nd result → show download CTA
+  | 'result'
+  | 'result_final'   // 2nd result: show result + download CTA below
   | 'too_short'
   | 'error';
 
 // ─────────────────────────────────────────────
-// Download CTA
+// Download CTA (after 2nd result)
 // ─────────────────────────────────────────────
-function DownloadCTA({ title, subtitle }: { title?: string; subtitle?: string }) {
+function DownloadCTABlock() {
   return (
-    <div className="flex flex-col items-center gap-5 text-center py-10 px-8">
-      <div
-        className="w-14 h-14 flex items-center justify-center rounded-2xl"
-        style={{ backgroundColor: 'rgba(79,70,229,0.10)', border: '1px solid rgba(79,70,229,0.18)' }}
+    <div
+      className="flex flex-col items-center gap-4 text-center pt-6 pb-8 px-8"
+      style={{ borderTop: '1px solid var(--border)' }}
+    >
+      <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+        Lade dir SpeachFlow runter um weiter zu testen.
+      </p>
+      <a
+        href="#download"
+        className="btn-primary text-sm px-6 py-2.5 whitespace-nowrap cursor-pointer"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById('download')?.scrollIntoView({ behavior: 'smooth' });
+        }}
       >
-        <i className="ri-smartphone-line text-2xl" style={{ color: 'var(--indigo)' }} />
+        <i className="ri-download-line" /> Kostenlos herunterladen
+      </a>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Result Card (shared between result + result_final)
+// ─────────────────────────────────────────────
+function ResultCard({ result }: { result: AnalysisResult }) {
+  return (
+    <div className="p-8 space-y-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-5 h-5 flex items-center justify-center">
+              <i className="ri-checkbox-circle-line" style={{ color: 'var(--indigo)' }} />
+            </div>
+            <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Das lief gut</span>
+          </div>
+          <div className="space-y-2">
+            {result.strengths.map((s, i) => (
+              <div
+                key={i}
+                className="flex items-start gap-2 p-3 rounded-xl text-sm"
+                style={{ backgroundColor: 'rgba(79,70,229,0.06)', border: '1px solid rgba(79,70,229,0.12)' }}
+              >
+                <div className="w-4 h-4 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i className="ri-check-line text-xs" style={{ color: 'var(--indigo)' }} />
+                </div>
+                <span style={{ color: 'var(--text-primary)' }}>{s}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-5 h-5 flex items-center justify-center">
+              <i className="ri-arrow-up-circle-line" style={{ color: '#f59e0b' }} />
+            </div>
+            <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Verbesserungspotenzial</span>
+          </div>
+          <div className="space-y-2">
+            {result.improvements.map((imp, i) => (
+              <div
+                key={i}
+                className="flex items-start gap-2 p-3 rounded-xl text-sm"
+                style={{ backgroundColor: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.12)' }}
+              >
+                <div className="w-4 h-4 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i className="ri-arrow-right-up-line text-xs" style={{ color: '#f59e0b' }} />
+                </div>
+                <span style={{ color: 'var(--text-primary)' }}>{imp}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-      <div>
-        <p className="text-base font-bold mb-1.5" style={{ color: 'var(--text-primary)' }}>
-          {title ?? 'Lade SpeachFlow herunter um weiter zu üben'}
-        </p>
-        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          {subtitle ?? 'Unbegrenzte Analysen, detailliertes Feedback & Verlauf – kostenlos in der App.'}
-        </p>
-      </div>
-      <div className="flex gap-3 flex-wrap justify-center">
-        <a href="#download" className="btn-primary text-sm px-5 py-2.5 whitespace-nowrap cursor-pointer">
-          <i className="ri-apple-line" /> App Store
-        </a>
-        <a href="#download" className="btn-secondary text-sm px-5 py-2.5 whitespace-nowrap cursor-pointer">
-          <i className="ri-google-play-line" /> Google Play
-        </a>
+      <div
+        className="p-4 rounded-2xl text-sm leading-relaxed"
+        style={{ backgroundColor: 'var(--bg-muted)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-4 h-4 flex items-center justify-center">
+            <i className="ri-sparkling-line text-xs" style={{ color: 'var(--indigo)' }} />
+          </div>
+          <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>KI-Fazit</span>
+        </div>
+        {result.summary}
       </div>
     </div>
   );
@@ -204,7 +253,14 @@ export default function LiveTestSection() {
   const streamRef = useRef<MediaStream | null>(null);
   const sessionId = useRef(getOrCreateSessionId());
 
-  // ── Startup: build fingerprint + check server limit ──
+  const analyzeSteps = [
+    'Audio wird verarbeitet...',
+    'Sprache wird transkribiert...',
+    'Qualität wird bewertet...',
+    'Feedback wird generiert...',
+  ];
+
+  // ── Startup: fingerprint → always show idle, limit only checked on API request ──
   useEffect(() => {
     let cancelled = false;
 
@@ -212,41 +268,10 @@ export default function LiveTestSection() {
       const fingerprint = await buildFingerprint();
       if (cancelled) return;
       setFp(fingerprint);
-
-      // 1. Local check first (instant)
-      const local = checkLocalLimit(fingerprint);
-      if (local.used >= DAILY_LIMIT) {
-        setUsedToday(local.used);
-        setStage('blocked');
-        return;
-      }
-
-      // 2. Server check (authoritative)
-      try {
-        const res = await fetch(
-          `${EDGE_FUNCTION_URL}?session_id=${encodeURIComponent(sessionId.current)}`,
-          { method: 'GET' }
-        );
-        if (!cancelled && res.ok) {
-          const data = await res.json();
-          if (data.is_blocked) {
-            // Sync local to server truth
-            saveLocal({ used: DAILY_LIMIT, date: todayStr(), fp: fingerprint });
-            localStorage.setItem(`${FP_KEY}_${fingerprint}`, String(DAILY_LIMIT));
-            setUsedToday(DAILY_LIMIT);
-            setStage('blocked');
-            return;
-          }
-          if (!cancelled) {
-            setUsedToday(data.used ?? 0);
-          }
-        }
-      } catch { /* offline – fall through to local state */ }
-
-      if (!cancelled) {
-        setUsedToday(local.used);
-        setStage('idle');
-      }
+      const localUsed = getLocalUsed(fingerprint);
+      setUsedToday(localUsed);
+      // Always start idle – limit is enforced only when sending a request
+      if (!cancelled) setStage('idle');
     }
 
     init();
@@ -258,7 +283,7 @@ export default function LiveTestSection() {
     if (stage !== 'analyzing') return;
     setAnalyzeStep(0);
     const iv = setInterval(() => {
-      setAnalyzeStep((s) => (s + 1) % ANALYZE_STEPS.length);
+      setAnalyzeStep((s) => (s + 1) % analyzeSteps.length);
     }, 1800);
     return () => clearInterval(iv);
   }, [stage]);
@@ -330,9 +355,10 @@ export default function LiveTestSection() {
   };
 
   const sendToGemini = async (audioBlob: Blob, mimeType: string) => {
-    // Local limit check (offline-safe, fingerprint-backed)
-    const local = checkLocalLimit(fp);
-    if (!local.allowed) {
+    // Local limit check FIRST – no API call if already at limit
+    const localUsed = getLocalUsed(fp);
+    if (localUsed >= DAILY_LIMIT) {
+      forceLocalToLimit(fp);
       setUsedToday(DAILY_LIMIT);
       setStage('blocked');
       return;
@@ -342,15 +368,15 @@ export default function LiveTestSection() {
       const formData = new FormData();
       formData.append('audio', new File([audioBlob], 'recording.webm', { type: mimeType }));
       formData.append('session_id', sessionId.current);
+      formData.append('device_id', fp);
       formData.append('scenario', 'speech');
 
       const response = await fetch(EDGE_FUNCTION_URL, { method: 'POST', body: formData });
       const data = await response.json();
 
       if (response.status === 429) {
-        // Server says blocked → sync local
-        saveLocal({ used: DAILY_LIMIT, date: todayStr(), fp });
-        localStorage.setItem(`${FP_KEY}_${fp}`, String(DAILY_LIMIT));
+        // Server confirmed limit → sync local immediately
+        forceLocalToLimit(fp);
         setUsedToday(DAILY_LIMIT);
         setStage('blocked');
         return;
@@ -365,22 +391,20 @@ export default function LiveTestSection() {
         throw new Error(data.message || data.error || 'Analyse fehlgeschlagen');
       }
 
-      // Increment local counter after successful server response
       incrementLocal(fp);
-
-      const newUsed = data.used ?? local.used + 1;
+      const newUsed = data.used ?? localUsed + 1;
       setUsedToday(newUsed);
       setResult(data);
 
       if (data.remaining <= 0) {
-        // Show result briefly then switch to limit view
-        setStage('limit');
+        // Last use: show result + download CTA below
+        setStage('result_final');
       } else {
         setStage('result');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten.');
-      setStage('idle');
+      setStage('error');
     }
   };
 
@@ -437,16 +461,37 @@ export default function LiveTestSection() {
                   }}
                 />
               </div>
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Wird geladen…</p>
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                {'Wird geladen…'}
+              </p>
             </div>
           )}
 
-          {/* ── BLOCKED (limit already reached on open) ── */}
+          {/* ── BLOCKED (only reached via API 429 response) ── */}
           {stage === 'blocked' && (
-            <DownloadCTA
-              title="Lade SpeachFlow herunter um weiter zu üben"
-              subtitle="Du hast dein Tageslimit erreicht. Unbegrenzte Analysen gibt es in der App – kostenlos."
-            />
+            <div className="flex flex-col items-center justify-center py-16 px-8 gap-5 text-center">
+              <div
+                className="w-14 h-14 flex items-center justify-center rounded-2xl"
+                style={{ backgroundColor: 'rgba(79,70,229,0.10)', border: '1px solid rgba(79,70,229,0.18)' }}
+              >
+                <i className="ri-smartphone-line text-2xl" style={{ color: 'var(--indigo)' }} />
+              </div>
+              <div>
+                <p className="text-base font-bold mb-1.5" style={{ color: 'var(--text-primary)' }}>
+                  Lade dir die App runter um weiter zu testen.
+                </p>
+              </div>
+              <a
+                href="#download"
+                className="btn-primary text-sm px-6 py-2.5 whitespace-nowrap cursor-pointer"
+                onClick={(e) => {
+                  e.preventDefault();
+                  document.getElementById('download')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+              >
+                <i className="ri-download-line" /> Kostenlos herunterladen
+              </a>
+            </div>
           )}
 
           {/* ── TOO SHORT ── */}
@@ -494,21 +539,6 @@ export default function LiveTestSection() {
                   Tippe auf den Button und sprich frei – die KI entscheidet alles
                 </p>
               </div>
-              {usedToday > 0 && (
-                <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  {Array.from({ length: DAILY_LIMIT }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="w-2.5 h-2.5 rounded-full transition-colors duration-300"
-                      style={{
-                        backgroundColor: i < usedToday ? 'var(--indigo)' : 'var(--bg-muted)',
-                        border: '1px solid var(--border-indigo)',
-                      }}
-                    />
-                  ))}
-                  <span>{usedToday}/{DAILY_LIMIT} heute genutzt</span>
-                </div>
-              )}
             </div>
           )}
 
@@ -571,85 +601,36 @@ export default function LiveTestSection() {
                   KI analysiert deine Aufnahme
                 </p>
                 <p className="text-sm transition-all duration-500" style={{ color: 'var(--text-secondary)' }}>
-                  {ANALYZE_STEPS[analyzeStep]}
+                  {analyzeSteps[analyzeStep]}
                 </p>
               </div>
             </div>
           )}
 
-          {/* ── RESULT (1st use) ── */}
+          {/* ── RESULT (1st use) – result + restart button ── */}
           {stage === 'result' && result && (
-            <div className="p-8 space-y-5">
-              {/* Strengths + Improvements */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-5 h-5 flex items-center justify-center">
-                      <i className="ri-checkbox-circle-line" style={{ color: 'var(--indigo)' }} />
-                    </div>
-                    <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Das lief gut</span>
-                  </div>
-                  <div className="space-y-2">
-                    {result.strengths.map((s, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-2 p-3 rounded-xl text-sm"
-                        style={{ backgroundColor: 'rgba(79,70,229,0.06)', border: '1px solid rgba(79,70,229,0.12)' }}
-                      >
-                        <div className="w-4 h-4 flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <i className="ri-check-line text-xs" style={{ color: 'var(--indigo)' }} />
-                        </div>
-                        <span style={{ color: 'var(--text-primary)' }}>{s}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-5 h-5 flex items-center justify-center">
-                      <i className="ri-arrow-up-circle-line" style={{ color: '#f59e0b' }} />
-                    </div>
-                    <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Verbesserungspotenzial</span>
-                  </div>
-                  <div className="space-y-2">
-                    {result.improvements.map((imp, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-2 p-3 rounded-xl text-sm"
-                        style={{ backgroundColor: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.12)' }}
-                      >
-                        <div className="w-4 h-4 flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <i className="ri-arrow-right-up-line text-xs" style={{ color: '#f59e0b' }} />
-                        </div>
-                        <span style={{ color: 'var(--text-primary)' }}>{imp}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Summary */}
+            <>
+              <ResultCard result={result} />
               <div
-                className="p-4 rounded-2xl text-sm leading-relaxed"
-                style={{ backgroundColor: 'var(--bg-muted)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+                className="px-8 pb-8 flex flex-col items-center gap-3"
+                style={{ borderTop: '1px solid var(--border)', paddingTop: '20px' }}
               >
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-4 h-4 flex items-center justify-center">
-                    <i className="ri-sparkling-line text-xs" style={{ color: 'var(--indigo)' }} />
-                  </div>
-                  <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>KI-Fazit</span>
-                </div>
-                {result.summary}
+                <button
+                  onClick={handleReset}
+                  className="btn-primary text-sm px-6 py-2.5 cursor-pointer whitespace-nowrap"
+                >
+                  <i className="ri-refresh-line" /> Nochmal aufnehmen
+                </button>
               </div>
-            </div>
+            </>
           )}
 
-          {/* ── LIMIT (2nd use → only download CTA, no result shown) ── */}
-          {stage === 'limit' && (
-            <DownloadCTA
-              title="Lade SpeachFlow herunter um weiter zu üben"
-              subtitle="Du hast dein Tageslimit erreicht. Unbegrenzte Analysen gibt es in der App – kostenlos."
-            />
+          {/* ── RESULT_FINAL (2nd use) – result + download CTA ── */}
+          {stage === 'result_final' && result && (
+            <>
+              <ResultCard result={result} />
+              <DownloadCTABlock />
+            </>
           )}
 
           {/* ── ERROR ── */}

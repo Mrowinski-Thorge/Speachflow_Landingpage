@@ -66,7 +66,7 @@ async function getGoogleAccessToken(clientEmail: string, privateKey: string): Pr
 
   if (!tokenResponse.ok) {
     const err = await tokenResponse.text();
-    throw new Error(`OAuth2 token exchange failed: ${err}`);
+    throw new Error(`OAuth2 token exchange failed (${tokenResponse.status}): ${err}`);
   }
 
   const tokenData = await tokenResponse.json();
@@ -148,8 +148,7 @@ Deno.serve(async (req) => {
     );
   }
 
-  // API key guard (manual since verify_jwt is false)
-  // Accept either apikey header or Authorization Bearer token
+  // API key guard
   const apiKey = req.headers.get('apikey') ?? '';
   const authHeader = req.headers.get('authorization') ?? '';
   const bearerToken = authHeader.replace(/^Bearer\s+/i, '');
@@ -180,8 +179,8 @@ Deno.serve(async (req) => {
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // ── POST: Analyze speech ──
   try {
+    // ── Credentials check ──
     const clientEmail =
       Deno.env.get('GCP_CLIENT_EMAIL') ??
       Deno.env.get('GOOGLE_CLIENT_EMAIL') ??
@@ -205,19 +204,30 @@ Deno.serve(async (req) => {
     if (!projectId) missing.push('GCP_PROJECT_ID');
 
     if (missing.length > 0) {
+      console.error('Missing GCP credentials:', missing.join(', '));
       return new Response(
         JSON.stringify({ error: 'missing_credentials', missing }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const formData = await req.formData();
+    // ── Parse form data ──
+    let formData: FormData;
+    try {
+      formData = await req.formData();
+    } catch (parseErr) {
+      console.error('FormData parse error:', parseErr);
+      return new Response(
+        JSON.stringify({ error: 'invalid_form_data', details: String(parseErr) }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const audioFile = formData.get('audio') as File;
     const deviceId = formData.get('device_id') as string;
     const sessionId = (formData.get('session_id') as string) ?? '';
     const scenario = (formData.get('scenario') as string) || 'speech';
 
-    // device_id is required
     if (!audioFile || !deviceId) {
       return new Response(
         JSON.stringify({ error: 'Missing audio or device_id' }),
@@ -236,13 +246,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Rate limit check – keyed by device_id
+    // ── Rate limit check ──
     const today = new Date().toISOString().split('T')[0];
-    const { data: rateData } = await supabase
+    const { data: rateData, error: rateError } = await supabase
       .from('live_test_rate_limit')
       .select('*')
       .eq('device_id', deviceId)
       .maybeSingle();
+
+    if (rateError) {
+      console.error('Rate limit DB error:', rateError);
+    }
 
     const currentCount = rateData?.used_count ?? 0;
     const cooldownUntil: string | null = rateData?.cooldown_until ?? null;
@@ -274,7 +288,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Audio → base64
+    // ── Audio → base64 ──
     const audioBuffer = await audioFile.arrayBuffer();
     const audioBytes = new Uint8Array(audioBuffer);
     let binary = '';
@@ -292,12 +306,23 @@ Deno.serve(async (req) => {
     };
     const scenarioLabel = scenarioLabels[scenario] || 'Vortrag';
 
-    const accessToken = await getGoogleAccessToken(clientEmail!, privateKey!);
+    // ── OAuth2 Token ──
+    let accessToken: string;
+    try {
+      accessToken = await getGoogleAccessToken(clientEmail!, privateKey!);
+    } catch (tokenErr) {
+      console.error('OAuth2 token error:', tokenErr);
+      return new Response(
+        JSON.stringify({ error: 'oauth2_failed', details: String(tokenErr) }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    // EU-Region: europe-west3 (Frankfurt)
-    const region = 'europe-west3';
-    const model = 'gemini-2.5-flash-lite';
+    // ── Vertex AI (europe-west3) ──
+    const model = 'gemini-2.0-flash-lite';
     const vertexUrl = `https://europe-west3-aiplatform.googleapis.com/v1/projects/${projectId}/locations/europe-west3/publishers/google/models/${model}:streamGenerateContent`;
+
+    console.log('Calling Vertex AI:', vertexUrl);
 
     const geminiResponse = await fetch(vertexUrl, {
       method: 'POST',
@@ -350,18 +375,20 @@ AUSGABE – NUR dieses JSON, kein Markdown, kein erklärender Text davor oder da
       const errText = await geminiResponse.text();
       console.error('Vertex AI error:', geminiResponse.status, errText);
       return new Response(
-        JSON.stringify({ error: 'Vertex AI error', status: geminiResponse.status, details: errText }),
+        JSON.stringify({ error: 'vertex_ai_error', status: geminiResponse.status, details: errText }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const rawText = await collectStreamedText(geminiResponse);
+    console.log('Raw response length:', rawText.length);
 
     let analysis;
     try {
       const cleaned = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       analysis = JSON.parse(cleaned);
-    } catch {
+    } catch (parseErr) {
+      console.error('JSON parse error:', parseErr, 'Raw text:', rawText.slice(0, 500));
       analysis = {
         transcript: '',
         strengths: [],
@@ -370,7 +397,7 @@ AUSGABE – NUR dieses JSON, kein Markdown, kein erklärender Text davor oder da
       };
     }
 
-    // Update rate limit – keyed by device_id
+    // ── Update rate limit ──
     const newCount = effectiveCount + 1;
     const isLastAttempt = newCount >= DAILY_LIMIT;
 
@@ -383,7 +410,7 @@ AUSGABE – NUR dieses JSON, kein Markdown, kein erklärender Text davor oder da
       : null;
 
     if (rateData && (cooldownUntil === null || today >= cooldownUntil)) {
-      await supabase
+      const { error: updateErr } = await supabase
         .from('live_test_rate_limit')
         .update({
           used_count: newCount,
@@ -392,8 +419,9 @@ AUSGABE – NUR dieses JSON, kein Markdown, kein erklärender Text davor oder da
           ...(cooldownDate ? { cooldown_until: cooldownDate } : {}),
         })
         .eq('device_id', deviceId);
+      if (updateErr) console.error('Rate limit update error:', updateErr);
     } else if (!rateData) {
-      await supabase
+      const { error: insertErr } = await supabase
         .from('live_test_rate_limit')
         .insert({
           device_id: deviceId,
@@ -402,6 +430,7 @@ AUSGABE – NUR dieses JSON, kein Markdown, kein erklärender Text davor oder da
           last_used_date: today,
           ...(cooldownDate ? { cooldown_until: cooldownDate } : {}),
         });
+      if (insertErr) console.error('Rate limit insert error:', insertErr);
     }
 
     return new Response(
@@ -415,9 +444,9 @@ AUSGABE – NUR dieses JSON, kein Markdown, kein erklärender Text davor oder da
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
-    console.error('Edge function error:', err);
+    console.error('Unhandled edge function error:', err);
     return new Response(
-      JSON.stringify({ error: 'Internal server error', details: String(err) }),
+      JSON.stringify({ error: 'internal_server_error', details: String(err) }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

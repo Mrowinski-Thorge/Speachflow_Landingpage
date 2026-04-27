@@ -84,26 +84,26 @@ export default function DownloadSection() {
             </p>
 
             {/* Store Buttons */}
-            <div className="flex flex-col sm:flex-row gap-3 mb-12">
+            <div className="flex flex-col sm:flex-row gap-4 mb-12 items-center">
               <a
                 href="#"
-                className="transition-all duration-200 hover:-translate-y-0.5 cursor-pointer h-12 flex items-center"
+                className="transition-all duration-200 hover:-translate-y-0.5 cursor-pointer flex items-center"
               >
                 <img
                   src="/App_Store_Download.svg"
                   alt="Im App Store herunterladen"
-                  className="h-full w-auto"
+                  style={{ height: '48px', width: 'auto' }}
                 />
               </a>
 
               <a
                 href="#"
-                className="transition-all duration-200 hover:-translate-y-0.5 cursor-pointer h-12 flex items-center"
+                className="transition-all duration-200 hover:-translate-y-1 cursor-pointer flex items-center"
               >
                 <img
                   src="/Play_Store_Download.png"
                   alt="Bei Google Play herunterladen"
-                  className="h-full w-auto"
+                  style={{ height: '48px', width: '160px', objectFit: 'contain' }}
                 />
               </a>
             </div>

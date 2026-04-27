@@ -149,13 +149,31 @@ Deno.serve(async (req) => {
   }
 
   // API key guard (manual since verify_jwt is false)
+  // Accept either apikey header or Authorization Bearer token
   const apiKey = req.headers.get('apikey') ?? '';
+  const authHeader = req.headers.get('authorization') ?? '';
+  const bearerToken = authHeader.replace(/^Bearer\s+/i, '');
   const expectedKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-  if (!apiKey || apiKey !== expectedKey) {
+
+  const providedKey = apiKey || bearerToken;
+
+  if (!providedKey) {
     return new Response(
-      JSON.stringify({ error: 'missing_authorization', message: 'Missing or invalid apikey header.' }),
+      JSON.stringify({ error: 'missing_authorization', message: 'Missing apikey or Authorization header.' }),
       { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+  }
+
+  if (expectedKey && providedKey !== expectedKey) {
+    console.warn('API key mismatch. Provided key prefix:', providedKey.slice(0, 8) + '...');
+    return new Response(
+      JSON.stringify({ error: 'invalid_authorization', message: 'Invalid apikey header.' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  if (!expectedKey) {
+    console.warn('SUPABASE_ANON_KEY secret not configured — skipping apikey validation');
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;

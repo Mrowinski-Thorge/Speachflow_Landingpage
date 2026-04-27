@@ -87,23 +87,23 @@ export default function DownloadSection() {
             <div className="flex flex-col sm:flex-row gap-3 mb-12">
               <a
                 href="#"
-                className="transition-all duration-200 hover:-translate-y-0.5 cursor-pointer"
+                className="transition-all duration-200 hover:-translate-y-0.5 cursor-pointer h-12 flex items-center"
               >
                 <img
                   src="/App_Store_Download.svg"
                   alt="Im App Store herunterladen"
-                  className="h-12 w-auto"
+                  className="h-full w-auto"
                 />
               </a>
 
               <a
                 href="#"
-                className="transition-all duration-200 hover:-translate-y-0.5 cursor-pointer"
+                className="transition-all duration-200 hover:-translate-y-0.5 cursor-pointer h-12 flex items-center"
               >
                 <img
                   src="/Play_Store_Download.png"
                   alt="Bei Google Play herunterladen"
-                  className="h-12 w-auto"
+                  className="h-full w-auto"
                 />
               </a>
             </div>

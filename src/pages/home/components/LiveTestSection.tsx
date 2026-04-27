@@ -306,6 +306,11 @@ export default function LiveTestSection() {
   const handleRecord = async () => {
     if (stage === 'recording') {
       if (recordingTime < MIN_RECORDING_SECONDS) {
+        // Prevent onstop from firing and sending an API request
+        if (mediaRecorderRef.current) {
+          mediaRecorderRef.current.onstop = null;
+          mediaRecorderRef.current.ondataavailable = null;
+        }
         stopAll();
         setStage('too_short');
         return;

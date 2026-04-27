@@ -184,7 +184,7 @@ export default function DatenschutzPage() {
               5. KI-Dienste und EU AI Act
             </h2>
             <p className="mb-4">
-              Zur Analyse deiner Sprachaufnahmen nutzen wir <strong style={{ color: 'var(--text-heading)' }}>Google Gemini 3.1 Flash Lite</strong> über die Google Cloud Platform (Vertex AI Enterprise). Die Sprachanalyse erfolgt <strong style={{ color: 'var(--text-heading)' }}>ausschließlich in der Region Frankfurt (Deutschland, europe-west3)</strong> – deine Daten verlassen die Europäische Union nicht.
+              Zur Analyse deiner Sprachaufnahmen nutzen wir <strong style={{ color: 'var(--text-heading)' }}>Google Gemini 2.5 Flash Lite</strong> über die Google Cloud Platform (Vertex AI Enterprise). Die Sprachanalyse erfolgt <strong style={{ color: 'var(--text-heading)' }}>ausschließlich in der Region Frankfurt (Deutschland, europe-west3)</strong> – deine Daten verlassen die Europäische Union nicht.
             </p>
             <p className="mb-4">
               Durch die Nutzung von <strong style={{ color: 'var(--text-heading)' }}>Vertex AI Enterprise</strong> gelten erweiterte Datenschutzgarantien: Deine Daten werden <strong style={{ color: 'var(--text-heading)' }}>nicht zum Training globaler Google-KI-Modelle</strong> verwendet. Google verarbeitet die Daten ausschließlich zur Erbringung des Dienstes im Rahmen des Auftragsverarbeitungsvertrags.

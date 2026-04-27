@@ -148,6 +148,16 @@ Deno.serve(async (req) => {
     );
   }
 
+  // API key guard (manual since verify_jwt is false)
+  const apiKey = req.headers.get('apikey') ?? '';
+  const expectedKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  if (!apiKey || apiKey !== expectedKey) {
+    return new Response(
+      JSON.stringify({ error: 'missing_authorization', message: 'Missing or invalid apikey header.' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -268,7 +278,7 @@ Deno.serve(async (req) => {
 
     // EU-Region: europe-west3 (Frankfurt)
     const region = 'europe-west3';
-    const model = 'gemini-3.1-flash-lite-preview';
+    const model = 'gemini-2.5-flash-lite';
     const vertexUrl = `https://europe-west3-aiplatform.googleapis.com/v1/projects/${projectId}/locations/europe-west3/publishers/google/models/${model}:streamGenerateContent`;
 
     const geminiResponse = await fetch(vertexUrl, {

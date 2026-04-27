@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 
 const EDGE_FUNCTION_URL = 'https://hfaxhfyugkvqxpgwbdht.supabase.co/functions/v1/analyze-speech';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY ?? '';
 const DAILY_LIMIT = 2;
 const LOCAL_KEY = 'speachflow_v2';
 const FP_KEY = 'speachflow_fp';
@@ -371,7 +372,14 @@ export default function LiveTestSection() {
       formData.append('device_id', fp);
       formData.append('scenario', 'speech');
 
-      const response = await fetch(EDGE_FUNCTION_URL, { method: 'POST', body: formData });
+      const response = await fetch(EDGE_FUNCTION_URL, {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: formData,
+      });
       const data = await response.json();
 
       if (response.status === 429) {

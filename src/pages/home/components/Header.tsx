@@ -59,12 +59,12 @@ export default function Header() {
             margin: scrolled ? '0 24px' : '0',
             borderRadius: scrolled ? '999px' : '0px',
             backgroundColor: scrolled
-              ? (dark ? 'rgba(20,20,24,0.85)' : 'rgba(255,255,255,0.82)')
+              ? (dark ? 'rgba(20,20,24,0.45)' : 'rgba(255,255,255,0.45)')
               : 'transparent',
-            backdropFilter: scrolled ? 'blur(32px) saturate(200%) brightness(1.05)' : 'none',
-            WebkitBackdropFilter: scrolled ? 'blur(32px) saturate(200%) brightness(1.05)' : 'none',
+            backdropFilter: scrolled ? 'blur(48px) saturate(220%) brightness(1.08)' : 'none',
+            WebkitBackdropFilter: scrolled ? 'blur(48px) saturate(220%) brightness(1.08)' : 'none',
             border: scrolled
-              ? `1px solid ${dark ? 'rgba(255,255,255,0.10)' : 'rgba(79,70,229,0.13)'}`
+              ? `1px solid ${dark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.55)'}`
               : '1px solid transparent',
             transition: 'all 0.4s cubic-bezier(0.22,1,0.36,1)',
             willChange: 'transform',
@@ -88,7 +88,7 @@ export default function Header() {
                 <img
                   src="/logo.png"
                   alt="SpeachFlow Logo"
-                  className="h-11 w-auto"
+                  className="h-14 w-auto"
                 />
                 {/* SpeachFlow text — hidden on mobile */}
                 <span

@@ -1,7 +1,25 @@
 import { useScrollReveal } from '@/hooks/useScrollReveal';
+import { openCookieBanner } from '@/components/feature/CookieBanner';
+
+interface FooterLink {
+  label: string;
+  href: string;
+  onClick?: () => void;
+}
 
 export default function Footer() {
   const ref = useScrollReveal();
+
+  const legalLinks: FooterLink[] = [
+    { label: 'Datenschutz', href: '/datenschutz' },
+    { label: 'Nutzungsbedingungen', href: '/nutzungsbedingungen' },
+    { label: 'Impressum', href: '/impressum' },
+    {
+      label: 'Cookie-Einstellungen',
+      href: '#',
+      onClick: () => openCookieBanner(),
+    },
+  ];
 
   return (
     <footer style={{ backgroundColor: 'var(--bg-base)', borderTop: '1px solid var(--border)' }}>
@@ -42,38 +60,23 @@ export default function Footer() {
               <div className="flex flex-col sm:flex-row gap-3 justify-center mb-10">
                 <a
                   href="#"
-                  className="flex items-center justify-center gap-3 px-7 py-3.5 rounded-full font-bold transition-all duration-200 hover:-translate-y-0.5 cursor-pointer whitespace-nowrap text-white"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.15)', border: '1.5px solid rgba(255,255,255,0.30)' }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'rgba(255,255,255,0.22)';
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'rgba(255,255,255,0.15)';
-                  }}
+                  className="transition-all duration-200 hover:-translate-y-0.5 cursor-pointer"
                 >
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="white">
-                    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-                  </svg>
-                  <span className="text-sm">App Store</span>
+                  <img
+                    src="/App_Store_Download.svg"
+                    alt="Im App Store herunterladen"
+                    className="h-12 w-auto"
+                  />
                 </a>
                 <a
                   href="#"
-                  className="flex items-center justify-center gap-3 px-7 py-3.5 rounded-full font-bold transition-all duration-200 hover:-translate-y-0.5 cursor-pointer whitespace-nowrap text-indigo-700"
-                  style={{ backgroundColor: 'white' }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'rgba(255,255,255,0.92)';
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'white';
-                  }}
+                  className="transition-all duration-200 hover:-translate-y-0.5 cursor-pointer"
                 >
-                  <svg viewBox="0 0 24 24" width="18" height="18">
-                    <path d="M3.18 23.76c.3.17.64.24.99.2l12.6-11.96-3.24-3.24L3.18 23.76z" fill="#EA4335"/>
-                    <path d="M22.14 10.5l-3.06-1.74-3.6 3.42 3.6 3.42 3.09-1.74c.87-.51.87-1.86-.03-2.36z" fill="#FBBC04"/>
-                    <path d="M3.18.24C2.85.42 2.64.78 2.64 1.26v21.48c0 .48.21.84.54 1.02l12.36-11.76L3.18.24z" fill="#4285F4"/>
-                    <path d="M4.17.04L16.53 12 13.29 15.24.69.24C.99.08 1.35.04 1.71.04c.84 0 1.68.42 2.46 0z" fill="#34A853"/>
-                  </svg>
-                  <span className="text-sm" style={{ color: '#4F46E5' }}>Google Play</span>
+                  <img
+                    src="/Play_Store_Download.png"
+                    alt="Bei Google Play herunterladen"
+                    className="h-12 w-auto"
+                  />
                 </a>
               </div>
 
@@ -106,7 +109,7 @@ export default function Footer() {
             <img
               src="/logo.png"
               alt="SpeachFlow"
-              className="h-7 w-auto"
+              className="h-11 w-auto"
             />
             <span className="text-sm" style={{ color: 'var(--text-muted)' }}>
               KI-Präsentationstraining
@@ -115,16 +118,18 @@ export default function Footer() {
 
           {/* Legal links */}
           <div className="flex flex-wrap items-center gap-5">
-            {[
-              { label: 'Datenschutz', href: '/datenschutz' },
-              { label: 'Nutzungsbedingungen', href: '/nutzungsbedingungen' },
-              { label: 'Impressum', href: '/impressum' },
-            ].map((item) => (
+            {legalLinks.map((item) => (
               <a
                 key={item.label}
                 href={item.href}
                 className="text-xs transition-colors duration-150 cursor-pointer"
                 style={{ color: 'var(--text-muted)' }}
+                onClick={(e) => {
+                  if (item.onClick) {
+                    e.preventDefault();
+                    item.onClick();
+                  }
+                }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--indigo)'; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-muted)'; }}
               >
